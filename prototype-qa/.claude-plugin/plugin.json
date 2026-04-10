@@ -1,0 +1,8 @@
+{
+  "name": "prototype-qa",
+  "description": "QA agent that validates Firefox Smart Window prototypes end-to-end via Marionette.",
+  "version": "1.0.0",
+  "author": "joliehuang",
+  "license": "MIT",
+  "keywords": ["firefox", "smart-window", "prototyping", "qa", "marionette", "testing"]
+}

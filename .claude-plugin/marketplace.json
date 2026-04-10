@@ -1,0 +1,39 @@
+{
+  "name": "firefox-prototype-plugins",
+  "description": "Claude Code plugins for end-to-end Firefox Smart Window prototyping",
+  "owner": {
+    "name": "joliehuang"
+  },
+  "plugins": [
+    {
+      "name": "prototype",
+      "description": "Coordinator that orchestrates the full prototype pipeline: spec, design, build, QA",
+      "source": "./prototype",
+      "category": "development"
+    },
+    {
+      "name": "prototype-spec",
+      "description": "PM agent that produces structured prototype specs",
+      "source": "./prototype-spec",
+      "category": "development"
+    },
+    {
+      "name": "prototype-design",
+      "description": "UX Designer agent that produces UI specs and Figma designs",
+      "source": "./prototype-design",
+      "category": "development"
+    },
+    {
+      "name": "prototype-build",
+      "description": "Engineer agent that builds prototypes from spec and design",
+      "source": "./prototype-build",
+      "category": "development"
+    },
+    {
+      "name": "prototype-qa",
+      "description": "QA agent that validates prototypes end-to-end via Marionette",
+      "source": "./prototype-qa",
+      "category": "development"
+    }
+  ]
+}
