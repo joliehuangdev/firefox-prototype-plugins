@@ -150,6 +150,88 @@ Report:
 - Anything not implemented or simplified for prototype
 ```
 
+## Profile & Launch Setup
+
+Every prototype needs a **persistent profile** with the right prefs and auth. Without this, the prototype will fail silently or require manual sign-in on every launch.
+
+### Required prefs (write to `profile-default/user.js`)
+
+```js
+user_pref("browser.ml.enable", true);                          // CRITICAL: defaults to false, LLM engine won't build without it
+user_pref("browser.smartwindow.enabled", true);
+user_pref("browser.smartwindow.firstrun.hasCompleted", true);
+user_pref("browser.smartwindow.firstrun.modelChoice", "1");
+user_pref("browser.smartwindow.tos.consentTime", 1775283133);  // any past timestamp
+user_pref("browser.shell.checkDefaultBrowser", false);
+```
+
+### FxA Authentication
+
+The LLM requires FxA sign-in. Auth tokens are stored across multiple files (`signedInUser.json`, `logins.json`, `key4.db`, `cert9.db`, `cookies.sqlite`). These must be copied together — `signedInUser.json` alone only has email/uid, not session tokens.
+
+If no authenticated profile exists yet, the user must sign in interactively once. After that, copy all auth files to the prototype's `profile-default/` for reuse.
+
+### run.command
+
+**Never use `./mach run` in run.command** — it creates a fresh temp profile on every launch, losing all prefs and auth. Always launch the binary directly with a persistent profile:
+
+```bash
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+"$DIR/obj-aarch64-apple-darwin25.3.0/dist/Nightly.app/Contents/MacOS/firefox" \
+  -foreground -no-remote -profile "$DIR/profile-default"
+```
+
+### Building from a worktree
+
+Worktrees share the git repo but need their own obj dir. If the worktree only has front-end changes (JS/CSS/HTML):
+
+1. Symlink the main build's obj dir: `ln -s /path/to/firefox/obj-* /path/to/worktree/obj-*`
+2. Copy changed files to the main checkout: `/bin/cp worktree/path/to/file.mjs firefox/path/to/file.mjs`
+3. Run `./mach build faster` from the main checkout
+4. The Nightly.app in the obj dir now has the worktree's changes
+
+---
+
+## Widget + LLM Coexistence Pattern
+
+When building artifacts that show both a **data widget** (weather card, map, etc.) AND an **LLM text response**, follow this architecture:
+
+### Two parallel data paths
+
+1. **Widget path** (fast): query detection in `ai-chat-content` -> event to `AIChatContentParent` actor -> external API fetch -> IPC back to content -> artifact component renders
+2. **LLM path** (slow): `submitChatMessage` -> `generatePrompt` injects API context -> `Chat.fetchWithHistory` -> LLM streams text into same bubble
+
+### Critical implementation rules
+
+1. **Every `conversationState` entry MUST have `convId`** — `#checkConversationState()` compares convId of incoming messages against the last entry. Missing convId causes a full state reset, wiping all messages.
+
+2. **Merge standalone widget entries when LLM responds** — If you create a temporary assistant entry for widget data (before LLM responds), `handleAIResponseEvent` must find it, take the widget data, delete the standalone, and put the data on the real assistant entry.
+
+3. **Handle engine build failure gracefully** — Wrap `openAIEngine.build()` in a nested try-catch. If it fails, still create user message + assistant placeholder so widget detection fires. Re-throw for the outer catch.
+
+4. **Suppress errors only for engine failure, not LLM failure** — Track `engineBuildFailed` flag. Only suppress the error display when the engine specifically failed AND the widget provides the answer.
+
+5. **Clear loading state when widget data arrives standalone** — Set `assistantIsLoading = false` and `errorObj = null`.
+
+6. **Start API context fetch early** — Widget API calls don't depend on the engine. Start them before sequential engine-dependent context (realTimeInfo, memories) and await the result later.
+
+### File locations for widget features
+
+| Layer | File | Purpose |
+|-------|------|---------|
+| Widget component | `ui/components/<name>/<name>.mjs` | Lit component rendering the card |
+| Query detection | `ui/components/ai-chat-content/ai-chat-content.mjs` | Pattern matching, widget data binding |
+| Submission | `ui/components/ai-window/ai-window.mjs` | Query detection at submit time, engine failure handling |
+| API fetch (widget) | `ui/actors/AIChatContentParent.sys.mjs` | External API calls for widget data |
+| IPC routing | `ui/actors/AIChatContentChild.sys.mjs` | Message passing between processes |
+| LLM context | `ui/modules/ChatConversation.sys.mjs` | Inject API data into LLM prompt |
+| Actor registration | `browser/components/DesktopActorRegistry.sys.mjs` | Register new actor events |
+| Chrome manifest | `ui/jar.mn` | Register new component files |
+| HTML import | `ui/content/aiChatContent.html` | Script tag for new component |
+
+---
+
 ## Rules
 
 - **Follow existing patterns exactly.** Don't invent new architectural patterns. Copy what works.
@@ -158,4 +240,5 @@ Report:
 - **Every component needs all 4 states.** Loading, loaded, error, empty — per the design spec.
 - **Tool parameters must match the spec.** The PM spec defines the contract. Don't add or remove parameters.
 - **Test the build.** Never report success without running `./mach build faster`.
+- **Always create a persistent profile with required prefs.** Never rely on `./mach run` temp profiles.
 - **Use the /firefox-desktop-frontend skill** for HTML/JS/CSS conventions if unsure about Firefox-specific patterns.

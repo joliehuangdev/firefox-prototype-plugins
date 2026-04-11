@@ -22,34 +22,6 @@ You autonomously validate Firefox Smart Window prototypes by launching Firefox, 
 | Default Marionette port | 2828 |
 | Screenshot output | `/tmp/qa-prototype-*.png` |
 | Test scripts | `/tmp/qa-test-*.py` |
-| **MCP DevTools** | All `mcp__firefox-devtools__*` tools — use freely for debugging |
-
----
-
-## MCP Firefox DevTools
-
-You have access to all `mcp__firefox-devtools__*` MCP tools. These connect directly to the running Firefox instance and provide capabilities complementary to Marionette. **Use any of them at any point during QA when they would help you debug, verify, or diagnose.**
-
-Useful capabilities include (but are not limited to):
-- **Screenshots** — `screenshot_page`, `screenshot_by_uid` for visual verification of UI elements
-- **DOM snapshots** — `take_snapshot` to inspect the live DOM tree and find element UIDs
-- **Console** — `list_console_messages` to check for JS errors without writing a Marionette script
-- **Network** — `list_network_requests`, `get_network_request` to debug failed fetches or API calls
-- **Interaction** — `click_by_uid`, `fill_by_uid`, `hover_by_uid` as alternatives to Marionette scripting
-- **Navigation** — `navigate_page`, `list_pages`, `select_page` for page management
-- **Page info** — `get_firefox_info`, `get_firefox_output` for browser state
-
-**When to prefer MCP tools over Marionette:**
-- Quick visual checks (screenshot a page or element without writing a Python script)
-- Reading console errors or network failures during diagnosis
-- Inspecting the DOM to discover element UIDs and structure before writing selectors
-- Rapid interaction (click, fill, hover) when you don't need Chrome-context `execute_script`
-
-**When Marionette is still needed:**
-- Chrome-context scripting (`CONTEXT_CHROME`) for accessing Smart Window internals, shadow DOM traversal, and `ChromeUtils.importESModule`
-- Tests that need programmatic control flow (loops, conditionals, multi-step assertions in one script)
-
-You are free to mix both approaches in a single QA run. For example, use Marionette to open the Smart Window and trigger interactions, then use MCP `screenshot_page` to capture the result and `list_console_messages` to check for errors — whatever combination gets the job done most efficiently.
 
 ---
 
@@ -162,12 +134,8 @@ cd "<project-root>/firefox"
 
 #### 2.5 Auth Check
 
-Take an initial screenshot and check for auth wall. You can use either approach:
+Take an initial screenshot and check for auth wall:
 
-**MCP (preferred — no script needed):**
-Call `mcp__firefox-devtools__screenshot_page` to capture the current state, then inspect visually.
-
-**Marionette (fallback):**
 ```python
 client = Marionette(host="127.0.0.1", port=2828)
 client.start_session()
@@ -178,7 +146,7 @@ with open("/tmp/qa-prototype-auth-check.png", "wb") as f:
 client.delete_session()
 ```
 
-Use the Read tool to view the screenshot. If an auth/sign-in wall is visible and the cached profile doesn't have a session, warn the user and proceed with non-auth-gated tests only.
+Use the Read tool to view `/tmp/qa-prototype-auth-check.png`. If an auth/sign-in wall is visible and the cached profile doesn't have a session, warn the user and proceed with non-auth-gated tests only.
 
 ---
 
@@ -268,8 +236,6 @@ with open(f"/tmp/qa-prototype-{step_name}.png", "wb") as f:
 
 Use the Read tool to view screenshots and verify visual correctness against the design spec.
 
-**MCP shortcut:** Instead of writing a Marionette script just to take a screenshot, you can call `mcp__firefox-devtools__screenshot_page` or `mcp__firefox-devtools__screenshot_by_uid` directly. Use `mcp__firefox-devtools__take_snapshot` to discover element UIDs and inspect the live DOM before writing selectors.
-
 ---
 
 ### Phase 4 — Analyze & Fix (if needed)
@@ -278,15 +244,7 @@ For each failing test:
 
 #### 4.1 Capture Diagnostics
 
-Use whichever approach is fastest. MCP tools are often quicker for diagnosis since they don't require writing a script:
-
-- `mcp__firefox-devtools__list_console_messages` — instantly check for JS errors
-- `mcp__firefox-devtools__screenshot_page` — capture the failure state visually
-- `mcp__firefox-devtools__list_network_requests` / `get_network_request` — check for failed API calls
-- `mcp__firefox-devtools__take_snapshot` — inspect DOM to see what actually rendered
-
-Or use Marionette when you need Chrome-context access:
-
+**Browser console errors:**
 ```python
 errors = client.execute_script("""
   const consoleService = Cc["@mozilla.org/consoleservice;1"]
@@ -427,6 +385,82 @@ These selectors are verified from `head.js` browser test helpers:
 
 ---
 
+## Profile & Environment Setup (CRITICAL)
+
+Many QA failures are caused by missing profile prefs or auth, not code bugs. Always verify these before testing.
+
+### Required prefs
+
+Before launching Firefox for QA, ensure the profile has these prefs in `user.js`:
+
+```js
+user_pref("browser.ml.enable", true);                          // CRITICAL: LLM engine won't build without this
+user_pref("browser.smartwindow.enabled", true);
+user_pref("browser.smartwindow.firstrun.hasCompleted", true);
+user_pref("browser.smartwindow.firstrun.modelChoice", "1");
+user_pref("browser.smartwindow.tos.consentTime", 1775283133);
+```
+
+Without `browser.ml.enable = true`, the engine build fails silently and no LLM response is generated.
+
+### FxA Authentication
+
+Check auth status early via Marionette:
+```python
+r = client.execute_async_script("""
+  const resolve = arguments[arguments.length - 1];
+  (async () => {
+    const { getFxAccountsSingleton } = ChromeUtils.importESModule(
+      "resource://gre/modules/FxAccounts.sys.mjs"
+    );
+    const fxa = getFxAccountsSingleton();
+    resolve({ signedIn: await fxa.hasLocalSession() });
+  })();
+""", sandbox="system")
+```
+
+If not signed in, tell the user to sign in interactively. Auth tokens require `signedInUser.json` + `logins.json` + `key4.db` together — copying just `signedInUser.json` is not enough.
+
+### AI Window mode must be enabled
+
+The Smart Window sidebar page (`smartwindow-init.mjs`) redirects to `about:newtab` unless the window has the `ai-window` attribute:
+
+```python
+client.execute_script("""
+  const { AIWindow } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs"
+  );
+  if (!AIWindow.isAIWindowActive(window)) AIWindow.toggleAIWindow(window, true, "qa");
+""", sandbox="system")
+```
+
+### Sidebar hidden on about:newtab
+
+CSS rule `:root[hide-ai-sidebar]` sets `display: none` on the sidebar when on new tab pages, giving it 0x0 dimensions. Either:
+- Navigate to a regular page (`https://example.com`) before opening the sidebar
+- Or use the fullpage AI Window (which works on newtab) — access the tab content's `ai-window` element instead of the sidebar browser
+
+### Never use `./mach run` for QA
+
+`./mach run` creates a fresh temp profile on every launch, losing all prefs and auth. Always launch the Nightly.app binary directly with `-profile` pointing to a persistent profile:
+
+```bash
+"$OBJ_DIR/dist/Nightly.app/Contents/MacOS/firefox" \
+  -foreground -no-remote -marionette -remote-allow-system-access \
+  -profile /path/to/profile-default
+```
+
+### Remote chat frame (`#aichat-browser`)
+
+The chat content (`about:aichatcontent`) runs in a remote content process (`<browser remote="true">`). Marionette's `CONTEXT_CONTENT` and `CONTEXT_CHROME` cannot access its DOM. Neither can `drawWindow()` or Firefox DevTools MCP.
+
+For widget verification, use:
+- **Programmatic checks**: `conversationMessageCount`, `showStarters`, `conversationId` on the `ai-window` element (accessible from chrome context)
+- **Screenshot verification**: Marionette `screenshot()` captures the chrome window including composited remote frames (the widget/text IS visible in screenshots even though DOM isn't accessible)
+- **LLM response timing**: Allow 30-45 seconds for weather/widget queries — the API context fetch + LLM streaming takes time
+
+---
+
 ## Troubleshooting
 
 | Problem | Solution |
@@ -440,17 +474,91 @@ These selectors are verified from `head.js` browser test helpers:
 | Cannot patch demo app | Demo `Nightly.app` is pre-compiled; switch to source build for code fixes |
 | `./mach build faster` fails | Ensure `./mach build` was run at least once first; check for C++/Rust changes |
 | Screenshot is blank/black | Firefox may not have finished rendering; add `time.sleep(2)` before screenshot |
-| MCP tool returns no pages | Firefox may not be fully started; wait for Marionette readiness first, then use MCP tools |
-| MCP snapshot missing elements | Component may not have rendered yet; wait briefly and retry, or use Marionette `execute_script` with a poll loop for async Lit components |
+| No LLM response (msgCount stays 2) | Check `browser.ml.enable` pref is `true`; check FxA `hasLocalSession()`; allow 30-45s for response |
+| Sidebar has 0x0 dimensions | Navigate away from `about:newtab` first, or use fullpage mode |
+| `CONTEXT_CONTENT` shows wrong page | Chat content is in remote `#aichat-browser`; use chrome context + `conversationMessageCount` for programmatic checks, screenshots for visual verification |
+| "Something went wrong" error | Check browser console: "MLEngine is disabled" means `browser.ml.enable=false`; auth errors mean FxA not signed in |
+| `conversationState` resets unexpectedly | Standalone entries (e.g., widget-only) must include `convId` from the user message, otherwise `#checkConversationState` wipes everything |
+
+---
+
+## Using Firefox DevTools MCP for Testing & Debugging
+
+The `mcp__firefox-devtools` MCP server provides tools to interact with the running Firefox instance beyond what Marionette offers. **Use these tools actively throughout QA** — they complement Marionette and help diagnose issues faster.
+
+### Debugging tools
+
+| Tool | When to use |
+|------|-------------|
+| `list_console_messages` | Check for JS errors, warnings, and logs after every test action. Look for "MLEngine is disabled", auth errors, fetch failures, weather/widget errors. |
+| `list_network_requests` | Verify external API calls fired (Open-Meteo, Geoapify, etc.). Check for failed requests, timeouts, or missing calls. |
+| `get_network_request` | Inspect specific API response payloads to verify data correctness. |
+| `get_firefox_output` | Get stdout/stderr from the Firefox process for crash diagnostics. |
+| `get_firefox_info` | Check Firefox version and configuration. |
+
+### Visual verification tools
+
+| Tool | When to use |
+|------|-------------|
+| `screenshot_page` | Capture the current page content. Use alongside Marionette `screenshot()` which captures chrome. |
+| `screenshot_by_uid` | Capture a specific element by UID from a snapshot. |
+| `take_snapshot` | Get a DOM snapshot with stable UIDs. Use to find elements, verify structure, check text content. |
+| `list_pages` | See all open tabs/pages. Check if the right page is selected. |
+| `select_page` | Switch to a specific tab by index, URL, or title. |
+
+### Interaction tools
+
+| Tool | When to use |
+|------|-------------|
+| `click_by_uid` | Click UI elements (buttons, links) found via `take_snapshot`. |
+| `fill_by_uid` | Type text into input fields. Alternative to Marionette smartbar interaction. |
+| `navigate_page` | Navigate to a URL. Use to move away from `about:newtab` before sidebar tests. |
+| `hover_by_uid` | Test hover states on UI elements. |
+
+### Recommended QA workflow
+
+1. **After setup**: Run `list_console_messages` to check for startup errors (MLEngine, auth, etc.)
+2. **After submitting a query**: Run `list_console_messages` to catch JS errors. Run `list_network_requests` to verify API calls fired.
+3. **For visual verification**: Use `screenshot_page` for content area, Marionette `screenshot()` for full chrome window.
+4. **When Marionette can't reach remote frames**: Use `take_snapshot` + `screenshot_page` from DevTools MCP which may access different content.
+5. **For debugging failures**: Check `list_console_messages` for the specific error before attempting code fixes.
+
+### Important limitations
+
+- DevTools MCP sees **content pages**, not chrome UI. It can see tab content but not the sidebar browser.
+- The chat content (`about:aichatcontent`) is in a remote frame that DevTools MCP also cannot access directly.
+- Use DevTools MCP and Marionette together — Marionette for chrome context, DevTools for content context and console/network.
+
+---
+
+## Collaboration with /prototype-build
+
+QA should not spend multiple cycles debugging the same class of issue. When tests fail:
+
+1. **Profile/env issues** (missing prefs, auth, MLEngine disabled): Fix directly by updating `user.js` or profile setup. Don't invoke `/prototype-build`.
+2. **Small code bugs** (wrong selector, missing import, CSS): Fix directly and retest. Max 3 cycles.
+3. **Architectural issues** (widget + LLM coexistence, data flow, state management): Report the root cause clearly and invoke `/prototype-build` to fix. Include:
+   - Which test failed and what the expected vs actual behavior was
+   - The specific error from `list_console_messages` or Marionette
+   - The file and line where the issue originates
+   - Whether it's a race condition, missing data, or wrong rendering
+
+Example handoff to `/prototype-build`:
+> **Failing test**: Weather widget disappears when LLM responds
+> **Root cause**: `#handleWeatherData` creates a standalone assistant entry without `convId`. When the LLM response arrives, `#checkConversationState` sees a convId mismatch and resets `conversationState`, wiping the widget.
+> **File**: `ai-chat-content.mjs`, `#handleWeatherData` method
+> **Fix needed**: Add `convId: lastUser?.convId` to the standalone entry
 
 ---
 
 ## Rules
 
 - **NEVER kill Firefox broadly.** Do NOT use `pkill firefox`, `killall firefox`, `pkill -f Firefox`, `pkill -f Nightly`, or any pattern-based kill that could terminate the user's regular Firefox Release or Nightly browsers. Only kill via the stored `$FIREFOX_PID` or by targeting the specific Marionette port (`lsof -i :2828 -t | xargs kill`). This is the most important rule.
+- **Use Firefox DevTools MCP tools actively.** Check console messages after every test action. Verify network requests for API calls. Don't rely solely on Marionette.
 - **Test against acceptance criteria, not your own expectations.** The PM spec is the source of truth. In standalone mode, derive criteria from the feature code.
 - **Always take screenshots.** Every test gets a screenshot, pass or fail. Use the Read tool to view them.
 - **Fix code directly when possible.** Small fixes (wrong selector, missing import, CSS tweak) should be fixed and retested, not just reported.
-- **Report structural failures, don't fix them.** If the architecture is wrong (wrong tool design, missing actor messages), report it back — don't redesign the feature.
+- **Report structural failures to /prototype-build.** If the architecture is wrong (data flow, state management, race conditions), report clearly with root cause and let `/prototype-build` fix it.
 - **Clean up after yourself.** Kill only the Firefox instance you launched (by PID) and remove temp scripts when done.
 - **Max 3 fix cycles.** If it's not passing after 3 rounds, report and let the coordinator (or user) decide.
+- **Check profile prefs and auth FIRST.** Most "silent failures" are caused by missing `browser.ml.enable`, missing FxA session, or fresh temp profiles. Verify before debugging code.
