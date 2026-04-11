@@ -25,7 +25,7 @@ The coordinator includes a human-in-the-loop checkpoint after the spec step and 
 ## Installation
 
 ```bash
-claude plugin marketplace add joliehunagdev/firefox-prototype-plugins
+claude plugin marketplace add joliehuangdev/firefox-prototype-plugins
 claude plugin install prototype@firefox-prototype-plugins
 claude plugin install prototype-spec@firefox-prototype-plugins
 claude plugin install prototype-design@firefox-prototype-plugins
