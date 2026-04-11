@@ -2,7 +2,7 @@
   "name": "prototype-spec",
   "description": "PM agent that produces a structured prototype spec for Firefox Smart Window features.",
   "version": "1.0.0",
-  "author": "joliehuang",
+  "author": "joliehunagdev",
   "license": "MIT",
   "keywords": ["firefox", "smart-window", "prototyping", "product-spec"]
 }

@@ -2,7 +2,7 @@
   "name": "prototype-design",
   "description": "UX Designer agent that produces UI specs and Figma designs for Firefox Smart Window prototypes.",
   "version": "1.0.0",
-  "author": "joliehuang",
+  "author": "joliehunagdev",
   "license": "MIT",
   "keywords": ["firefox", "smart-window", "prototyping", "ux-design", "figma"]
 }

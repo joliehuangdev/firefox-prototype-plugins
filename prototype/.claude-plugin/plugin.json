@@ -2,7 +2,7 @@
   "name": "prototype",
   "description": "Coordinator that orchestrates the full prototype pipeline: spec, design, build, QA for Firefox Smart Window.",
   "version": "1.0.0",
-  "author": "joliehuang",
+  "author": "joliehunagdev",
   "license": "MIT",
   "keywords": ["firefox", "smart-window", "prototyping", "pipeline"]
 }

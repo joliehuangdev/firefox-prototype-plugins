@@ -2,7 +2,7 @@
   "name": "firefox-prototype-plugins",
   "description": "Claude Code plugins for end-to-end Firefox Smart Window prototyping",
   "owner": {
-    "name": "joliehuang"
+    "name": "joliehunagdev"
   },
   "plugins": [
     {
