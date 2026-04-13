@@ -51,11 +51,16 @@ Or use individual skills standalone:
 /prototype-qa
 ```
 
-## Requirements
+## Prerequisites
+
+You must have a local Firefox build before using these plugins. The build and QA skills modify and run code directly in the Firefox source tree.
+
+Follow the setup instructions at: https://firefox-source-docs.mozilla.org/setup/index.html
+
+## Other requirements
 
 - [Claude Code](https://claude.ai/claude-code) CLI
-- Firefox source tree (for `./mach build`)
-- Python 3 with Marionette client (bundled in Firefox source tree)
+- Python 3 with Marionette client (bundled in the Firefox source tree)
 - Figma MCP server (optional, for design mockups)
 
 ## License
