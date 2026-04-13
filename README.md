@@ -1,7 +1,7 @@
 # Firefox Prototype Plugins
 
 Claude Code plugins that orchestrate building Firefox Smart Window prototypes end-to-end — from product idea to working, tested feature.
-Start with /prototype and co-create the squad agents to 10x your prototype velocity.
+Start with /prototype and co-create the squad agents to 10x your prototyping velocity.
 
 ## What's included
 
