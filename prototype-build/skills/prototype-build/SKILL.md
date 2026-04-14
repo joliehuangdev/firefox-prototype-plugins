@@ -148,7 +148,25 @@ Report:
 
 ### Known Limitations
 - Anything not implemented or simplified for prototype
+
+### Launch Script
+- Created `run.command` at: [path]
 ```
+
+### Phase 5.1 — Create Launch Script
+
+Create a `run.command` at the prototype root so anyone can double-click to launch:
+
+```bash
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+"$DIR/firefox/obj-*/dist/Nightly.app/Contents/MacOS/firefox" \
+  -foreground -no-remote -profile "$DIR/profile-default"
+```
+
+Make it executable: `chmod +x run.command`
+
+If the prototype is in a worktree with a symlinked obj dir, adjust the path to resolve the symlink correctly.
 
 ## Profile & Launch Setup
 
@@ -190,6 +208,8 @@ Worktrees share the git repo but need their own obj dir. If the worktree only ha
 2. Copy changed files to the main checkout: `/bin/cp worktree/path/to/file.mjs firefox/path/to/file.mjs`
 3. Run `./mach build faster` from the main checkout
 4. The Nightly.app in the obj dir now has the worktree's changes
+
+**Important:** If you added new files and registered them in `moz.build`, `./mach build faster` won't pick up the new `moz.build` entries. You must copy the `moz.build` changes too and run `./mach build` (full, not `faster`) from the main checkout for the first build after adding new registrations. Subsequent JS/CSS-only changes can use `./mach build faster`.
 
 ---
 

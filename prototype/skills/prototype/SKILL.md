@@ -84,7 +84,7 @@ Agent(subagent_type: "general-purpose", description: "Prototype build", isolatio
 >
 > Build the prototype. Output a summary of files created/modified and the build result.
 
-Collect the build output. Note the worktree path if changes were made.
+Collect the build output. **The Agent tool returns the worktree path and branch name in its result when `isolation: "worktree"` is used. Extract and store this path — you need it for the QA agent prompt.**
 
 ### Step 6 — QA Validation
 
@@ -126,6 +126,8 @@ Re-spawn the Engineer agent with the failure context:
 > Fix the failures and rebuild. Output a summary of changes and build result.
 
 Then re-run QA (Step 6). Repeat up to 3 times. If still failing after 3 cycles, report the remaining failures to the user and ask how to proceed.
+
+**Important:** If the Engineer agent reports a **build failure** (not a QA failure), re-send to the Engineer with the build error — do not forward to QA. Only proceed to QA when the build succeeds.
 
 ### Step 8 — Final Report
 

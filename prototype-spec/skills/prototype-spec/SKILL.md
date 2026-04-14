@@ -60,6 +60,7 @@ List the AI tools this feature needs. For each tool:
 - **Description**: What it does (one line)
 - **Parameters**: List with types
 - **Returns**: What the tool returns
+- **LLM Context**: What data from this tool's API response should be injected into the LLM prompt so the model can generate a conversational response alongside the widget? (e.g., "Include the 5-day forecast JSON so the LLM can summarize it conversationally." If the tool is widget-only with no LLM commentary, say "None — widget renders standalone.")
 
 ### Artifacts
 List the artifact components this feature renders. For each:

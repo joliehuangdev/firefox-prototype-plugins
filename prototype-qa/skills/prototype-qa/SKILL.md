@@ -88,12 +88,17 @@ lsof -i :2828 -t 2>/dev/null | xargs kill -9 2>/dev/null || true
 
 **Always capture the PID so cleanup can target only this instance.**
 
+**Source builds — launch the binary directly with a persistent profile:**
 ```bash
 cd "<build-path>/firefox"
-./mach run -- -marionette &
+OBJ_DIR=$(ls -d obj-* 2>/dev/null | head -1)
+"$OBJ_DIR/dist/Nightly.app/Contents/MacOS/firefox" \
+  -foreground -no-remote -marionette -profile "<build-path>/profile-default" &
 FIREFOX_PID=$!
 echo "Launched Firefox PID: $FIREFOX_PID"
 ```
+
+**Never use `./mach run` for QA** — it creates a fresh temp profile on every launch, losing all prefs and auth.
 
 If a demo app exists at `<build-path>/Nightly.app`:
 ```bash

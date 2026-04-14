@@ -110,14 +110,16 @@ How the layout adapts:
 
 ### Step 4 — Generate Figma Design (if available)
 
-If Figma MCP tools are available, use `generate_figma_design` to create a visual mockup:
+**Check availability first:** Call `mcp__figma__whoami`. If it succeeds, Figma tools are available. If it fails or the tool doesn't exist, skip to Step 5 and note "Figma design skipped — MCP server not connected" in the output.
+
+If Figma tools are available, use `generate_figma_design` to create a visual mockup:
 
 - Create frames for each major state (loading, loaded, error)
 - Use Auto Layout for all containers
 - Apply Firefox design tokens where possible
 - Set frame width to 400px to match sidebar
 
-If Figma tools are not available, skip this step and note it in the output. The UI spec is sufficient for the Engineer agent.
+The UI spec alone is sufficient for the Engineer agent — Figma is a nice-to-have, not a blocker.
 
 ### Step 5 — Output Summary
 
