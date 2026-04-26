@@ -1,12 +1,45 @@
 ---
 name: prototype-qa
 description: QA agent that validates Firefox Smart Window prototypes end-to-end via Marionette. Use when the user says "qa the prototype", "test the prototype", "validate the build", or when invoked by the /prototype coordinator. Can also be used standalone.
-version: 1.0.0
+version: 2.0.0
 ---
 
 # Prototype QA — QA Agent
 
 You autonomously validate Firefox Smart Window prototypes by launching Firefox, interacting with the feature via Marionette, taking screenshots, and reporting pass/fail results against the spec's acceptance criteria.
+
+## Inputs / Outputs
+
+**Pipeline mode (called by /prototype coordinator):**
+- You receive an `artifact_dir` — absolute path to `_prototype/<slug>/`
+- Read `<artifact_dir>/spec.md` (acceptance criteria are the source of truth for what to test)
+- Read `<artifact_dir>/design.md` if it exists (visual expectations)
+- Read `<artifact_dir>/worktree-info.txt` for worktree path + branch (the build location)
+- Read `<artifact_dir>/build-report-<latest>.md` for what was built
+- For first cycle: write `<artifact_dir>/qa-plan.md` (the test plan)
+- Each cycle: write `<artifact_dir>/qa-report-<N>.md` (N = current QA cycle, starting at 1; check the dir for existing reports)
+- Save screenshots to `<artifact_dir>/screenshots/cycle-<N>-<test-name>.png`
+- Update `<artifact_dir>/status.yaml`:
+  - `last_actor: prototype-qa`, `updated: <iso>`
+  - If all PASS: `phase: done`, `completed.qa: true`
+  - For each failure, increment the appropriate `qa_cycles.<spec|design|build|infra>` counter
+
+**Standalone mode:** detect the prototype from context, write reports inline.
+
+## Failure Classification (CRITICAL)
+
+Every failure in your report must include a **classification label** so the coordinator knows which layer to route the fix to. The label drives which sub-skill the coordinator re-spawns.
+
+| Label | Use when | Examples |
+|---|---|---|
+| `spec` | The acceptance criterion itself is unclear, wrong, or untestable. The implementation matches the spec, but the spec doesn't match what should be tested. | "Criterion #4 says 'feature loads quickly' — no measurable threshold." "Criterion implies behavior X but no acceptance test can express it." |
+| `design` | The implementation matches the spec but the visual outcome breaks the design contract: layout overflows 400px, missing state visual, wrong tokens used, interaction missing. | "Error state shows raw stack trace instead of user-readable message per design.md." "Card overflows Smart Window at 300px width." |
+| `build` | Implementation bug. Spec and design are correct; the code doesn't deliver them. | "Tool handler throws on empty params." "Component shadow DOM doesn't render the icon." "convId missing — conversationState resets." |
+| `infra` | Environment, profile, auth, port, or timing issue. Not a code problem. | "browser.ml.enable=false in profile." "FxA session expired." "Marionette port already bound — stale instance from prior run." "Race: artifact rendered before screenshot — needs `time.sleep(2)`." |
+
+**You self-fix `infra` failures** (update profile prefs, kill stale port, add wait). Don't re-spawn anything for `infra` — just fix and re-test.
+
+For `spec`/`design`/`build`, you do **not** fix the code yourself in pipeline mode. You report with the classification, and the coordinator routes to the right layer. (In standalone mode, fixing build-class issues directly is still fine — see existing rules.)
 
 ## Quick Reference
 
@@ -18,8 +51,9 @@ You autonomously validate Firefox Smart Window prototypes by launching Firefox, 
 | AI Window models | `firefox/browser/components/aiwindow/models/` |
 | AI Window actors | `firefox/browser/components/aiwindow/ui/actors/` |
 | Demo apps | `demos/<name>/` (contain `Nightly.app` + `profile-default`) |
-| Source prototypes | `assistant-<name>/` directories |
-| Default Marionette port | 2828 |
+| Source prototypes | `worktrees/assistant-<name>/` directories |
+| Marionette port | Read from `<worktree>/.marionette-port` (written by launch-prototype.sh) |
+| Launch script (shared) | `/Users/joliehuang/FirefoxPrototype/launch-prototype.sh` |
 | Screenshot output | `/tmp/qa-prototype-*.png` |
 | Test scripts | `/tmp/qa-test-*.py` |
 
@@ -66,7 +100,7 @@ Map each acceptance criterion to a concrete test:
 
 | # | Acceptance Criterion | Test Action | Expected Result | Selector Chain |
 |---|---------------------|-------------|-----------------|----------------|
-| 1 | "Feature renders in sidebar" | Open sidebar, check for component | Element exists | `ai-window → shadowRoot → #aichat-browser → ... → feature-artifact` |
+| 1 | "Feature renders in Smart Window" | Open Smart Window, check for component | Element exists | `ai-window → shadowRoot → #aichat-browser → ... → feature-artifact` |
 | 2 | ... | ... | ... | ... |
 
 Print the test plan before proceeding.
@@ -79,55 +113,68 @@ Print the test plan before proceeding.
 
 **CRITICAL: Never use `pkill firefox`, `killall firefox`, `pkill -f Firefox`, or any broad pattern that could kill the user's regular Firefox instances (Release, Nightly, etc.). Only kill the specific process bound to the Marionette port.**
 
+If `<worktree>/.marionette-port` exists from a previous run, kill anything still bound to it:
+
 ```bash
-# Only kill whatever process is holding the Marionette port
-lsof -i :2828 -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+WT="<worktree-path>"
+if [ -f "$WT/.marionette-port" ]; then
+  PORT=$(cat "$WT/.marionette-port")
+  lsof -i :$PORT -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+fi
 ```
 
 #### 2.2 Launch Firefox
 
-**Always capture the PID so cleanup can target only this instance.**
+**Always launch via `<worktree>/run.command`** (which delegates to `launch-prototype.sh`). This is the single source of truth — the same launcher humans and agents use. It handles golden-profile cloning, free Marionette port assignment, integrity checks, and pre-launch hooks.
 
-**Source builds — launch the binary directly with a persistent profile:**
 ```bash
-cd "<build-path>/firefox"
-OBJ_DIR=$(ls -d obj-* 2>/dev/null | head -1)
-"$OBJ_DIR/dist/Nightly.app/Contents/MacOS/firefox" \
-  -foreground -no-remote -marionette -profile "<build-path>/profile-default" &
+WT="<worktree-path>"
+"$WT/run.command" &
 FIREFOX_PID=$!
 echo "Launched Firefox PID: $FIREFOX_PID"
 ```
+
+The launcher writes the assigned Marionette port to `$WT/.marionette-port` before exec'ing Firefox.
+
+For a **demo app** that doesn't have a `run.command` (frozen build):
+```bash
+"<demo-path>/Nightly.app/Contents/MacOS/firefox" \
+  -foreground -no-remote -marionette \
+  -profile "<demo-path>/profile-default" &
+FIREFOX_PID=$!
+```
+Demo Marionette uses port 2828 (default) since demos predate the per-worktree port scheme.
 
 **Never use `./mach run` for QA** — it creates a fresh temp profile on every launch, losing all prefs and auth.
 
-If a demo app exists at `<build-path>/Nightly.app`:
-```bash
-"<build-path>/Nightly.app/Contents/MacOS/firefox" -foreground -no-remote -marionette -profile "<build-path>/profile-default" &
-FIREFOX_PID=$!
-echo "Launched Firefox PID: $FIREFOX_PID"
-```
-
-**Note:** The `-no-remote` flag prevents this instance from connecting to or interfering with existing Firefox sessions.
-
-#### 2.3 Wait for Marionette
+#### 2.3 Read the Port and Wait for Marionette
 
 ```bash
+WT="<worktree-path>"
 for i in $(seq 1 30); do
-  if lsof -i :2828 >/dev/null 2>&1; then echo "Ready"; break; fi
+  if [ -f "$WT/.marionette-port" ]; then
+    PORT=$(cat "$WT/.marionette-port")
+    if lsof -i :$PORT >/dev/null 2>&1; then echo "Ready on port $PORT"; break; fi
+  fi
   sleep 1
 done
 ```
 
+For demos, use port 2828 instead of reading the file.
+
 #### 2.4 Verify Connection
 
 ```python
-import sys
+import sys, os
 sys.path.insert(0, "<project-root>/firefox/testing/marionette/client")
 from marionette_driver.marionette import Marionette
 
-client = Marionette(host="127.0.0.1", port=2828)
+WT = "<worktree-path>"
+PORT = int(open(os.path.join(WT, ".marionette-port")).read().strip())
+
+client = Marionette(host="127.0.0.1", port=PORT)
 client.start_session()
-print("Connected:", client.session_id)
+print(f"Connected on port {PORT}: {client.session_id}")
 client.delete_session()
 ```
 
@@ -142,7 +189,7 @@ cd "<project-root>/firefox"
 Take an initial screenshot and check for auth wall:
 
 ```python
-client = Marionette(host="127.0.0.1", port=2828)
+client = Marionette(host="127.0.0.1", port=PORT)  # PORT from 2.4
 client.start_session()
 data = client.screenshot()
 with open("/tmp/qa-prototype-auth-check.png", "wb") as f:
@@ -166,7 +213,7 @@ import sys, base64, json, time
 sys.path.insert(0, "<project-root>/firefox/testing/marionette/client")
 from marionette_driver.marionette import Marionette
 
-client = Marionette(host="127.0.0.1", port=2828)
+client = Marionette(host="127.0.0.1", port=PORT)
 client.start_session()
 client.set_context(client.CONTEXT_CHROME)
 
@@ -195,7 +242,7 @@ client.execute_script("""
 """, sandbox="system")
 ```
 
-**Wait for sidebar load:**
+**Wait for Smart Window load:**
 ```python
 client.execute_script("""
   const browser = document.getElementById("ai-window-browser");
@@ -208,7 +255,7 @@ client.execute_script("""
 """, sandbox="system")
 ```
 
-**Query inside sidebar shadow DOM:**
+**Query inside Smart Window shadow DOM:**
 ```python
 result = client.execute_script("""
   const browser = document.getElementById("ai-window-browser");
@@ -299,39 +346,51 @@ Repeat Phase 3-4 up to 3 cycles.
 
 ### Phase 5 — Report
 
-Output a structured report:
+In pipeline mode, write to `<artifact_dir>/qa-report-<N>.md` (N = current QA cycle). Save screenshots to `<artifact_dir>/screenshots/cycle-<N>-<name>.png`. In standalone mode, output to conversation and `/tmp/`.
 
 ```markdown
 ## QA Report: [Feature Name]
 
 **Date:** [date]
 **Build:** [worktree branch or path]
-**Cycles:** [N of 3]
+**Cycle:** [N]
 
 ### Results
 
-| # | Test | Status | Notes |
-|---|------|--------|-------|
-| 1 | Sidebar opens with feature | PASS | |
-| 2 | Core interaction works | PASS | |
-| 3 | Error state displays | FAIL | Component missing error template |
+| # | Test | Status | Classification | Notes |
+|---|------|--------|----------------|-------|
+| 1 | Sidebar opens with feature | PASS | — | |
+| 2 | Core interaction works | PASS | — | |
+| 3 | Error state displays | FAIL | design | Component missing error template per design.md state contract |
+| 4 | Forecast loads in 5s | FAIL | spec | Criterion has no measurable threshold for "loads" — needs LCP/load-event definition |
 
 ### Screenshots
-- `/tmp/qa-prototype-sidebar-open.png` — sidebar loaded
-- `/tmp/qa-prototype-interaction.png` — after user interaction
-- `/tmp/qa-prototype-error.png` — error state (FAIL)
+- `screenshots/cycle-<N>-window-open.png` — Smart Window loaded
+- `screenshots/cycle-<N>-interaction.png` — after user interaction
+- `screenshots/cycle-<N>-error.png` — error state (FAIL)
 
 ### Failures (if any)
+
 For each failure:
 - **Test:** [which test]
+- **Classification:** `spec | design | build | infra` (REQUIRED)
 - **Expected:** [from acceptance criteria]
 - **Actual:** [what happened]
-- **Root cause:** [what's wrong in the code]
-- **Suggested fix:** [specific file and change needed]
+- **Root cause:** [what's wrong, in the layer named by classification]
+- **Suggested fix:** [specific file/section/change needed at the right layer]
 - **Screenshot:** [path]
 
+### Cycle Counter Updates
+
+Report the increments you applied to `status.yaml.qa_cycles`:
+- spec: +N
+- design: +N
+- build: +N
+- infra: +N (self-fixed inline)
+
 ### Overall Status
-[PASS — all tests green / FAIL — N tests failing, details above]
+
+[PASS — all tests green / FAIL — N tests failing across <layers>, details above]
 ```
 
 ### Phase 6 — Cleanup
@@ -359,7 +418,7 @@ These selectors are verified from `head.js` browser test helpers:
 | Element | Context | Selector |
 |---------|---------|----------|
 | Sidebar browser | Chrome | `document.getElementById("ai-window-browser")` |
-| AI Window | Sidebar content | `sidebarBrowser.contentDocument.querySelector("ai-window")` |
+| AI Window | AI Window content | `sidebarBrowser.contentDocument.querySelector("ai-window")` |
 | Smartbar | AI Window shadow | `aiWindow.shadowRoot.querySelector("#ai-window-smartbar")` |
 | Smartbar input | Smartbar | `smartbar.inputField` |
 | Chat browser | AI Window shadow | `aiWindow.shadowRoot.querySelector("#aichat-browser")` |
@@ -392,25 +451,28 @@ These selectors are verified from `head.js` browser test helpers:
 
 ## Profile & Environment Setup (CRITICAL)
 
-Many QA failures are caused by missing profile prefs or auth, not code bugs. Always verify these before testing.
+Many QA failures are caused by missing profile prefs or auth, not code bugs. The reliable mechanism is the **golden profile** at `~/.firefox-prototype-golden/`, cloned into `<worktree>/profile-default/` on first launch by `launch-prototype.sh`. The clone inherits all prefs, FxA auth, and MLPA model cache.
 
-### Required prefs
+### What's in golden
 
-Before launching Firefox for QA, ensure the profile has these prefs in `user.js`:
+- **Required prefs** in `user.js`:
+  ```js
+  user_pref("browser.ml.enable", true);                          // CRITICAL: LLM engine won't build without this
+  user_pref("browser.smartwindow.enabled", true);
+  user_pref("browser.smartwindow.firstrun.hasCompleted", true);
+  user_pref("browser.smartwindow.firstrun.modelChoice", "1");
+  user_pref("browser.smartwindow.tos.consentTime", 1775283133);
+  ```
+- **FxA auth** (signedInUser.json + logins.json + key4.db + cert9.db + cookies.sqlite — together).
+- **MLPA model cache** in `storage/`.
 
-```js
-user_pref("browser.ml.enable", true);                          // CRITICAL: LLM engine won't build without this
-user_pref("browser.smartwindow.enabled", true);
-user_pref("browser.smartwindow.firstrun.hasCompleted", true);
-user_pref("browser.smartwindow.firstrun.modelChoice", "1");
-user_pref("browser.smartwindow.tos.consentTime", 1775283133);
-```
+The launcher verifies golden integrity (`verify-golden.sh`) before cloning. If golden is missing or stale, the launch fails with an actionable error.
 
-Without `browser.ml.enable = true`, the engine build fails silently and no LLM response is generated.
+Without `browser.ml.enable = true`, the engine build fails silently and no LLM response is generated. If you see this symptom, the golden seed is incomplete — re-run `seed-golden.sh --force`.
 
 ### FxA Authentication
 
-Check auth status early via Marionette:
+If golden was seeded correctly, every cloned profile starts signed in. Verify via Marionette:
 ```python
 r = client.execute_async_script("""
   const resolve = arguments[arguments.length - 1];
@@ -424,11 +486,11 @@ r = client.execute_async_script("""
 """, sandbox="system")
 ```
 
-If not signed in, tell the user to sign in interactively. Auth tokens require `signedInUser.json` + `logins.json` + `key4.db` together — copying just `signedInUser.json` is not enough.
+If not signed in despite golden being present, FxA tokens may have expired. Re-seed golden (`seed-golden.sh --force`) and delete the worktree's `profile-default/` so it re-clones.
 
 ### AI Window mode must be enabled
 
-The Smart Window sidebar page (`smartwindow-init.mjs`) redirects to `about:newtab` unless the window has the `ai-window` attribute:
+The Smart Window page (`smartwindow-init.mjs`) redirects to `about:newtab` unless the window has the `ai-window` attribute:
 
 ```python
 client.execute_script("""
@@ -441,19 +503,13 @@ client.execute_script("""
 
 ### Sidebar hidden on about:newtab
 
-CSS rule `:root[hide-ai-sidebar]` sets `display: none` on the sidebar when on new tab pages, giving it 0x0 dimensions. Either:
-- Navigate to a regular page (`https://example.com`) before opening the sidebar
-- Or use the fullpage AI Window (which works on newtab) — access the tab content's `ai-window` element instead of the sidebar browser
+CSS rule `:root[hide-ai-sidebar]` (legacy attribute name from when AI Window was sidebar-only) sets `display: none` on the Smart Window browser when on new tab pages, giving it 0x0 dimensions. Either:
+- Navigate to a regular page (`https://example.com`) before opening the Smart Window
+- Or use the fullpage AI Window (which works on newtab) — access the tab content's `ai-window` element instead of the Smart Window browser
 
 ### Never use `./mach run` for QA
 
-`./mach run` creates a fresh temp profile on every launch, losing all prefs and auth. Always launch the Nightly.app binary directly with `-profile` pointing to a persistent profile:
-
-```bash
-"$OBJ_DIR/dist/Nightly.app/Contents/MacOS/firefox" \
-  -foreground -no-remote -marionette -remote-allow-system-access \
-  -profile /path/to/profile-default
-```
+`./mach run` creates a fresh temp profile on every launch, losing all prefs and auth. Use the worktree's `run.command` instead — it delegates to `launch-prototype.sh`, which launches the Nightly.app binary directly with the persistent (golden-cloned) profile and a free Marionette port.
 
 ### Remote chat frame (`#aichat-browser`)
 
@@ -471,7 +527,7 @@ For widget verification, use:
 | Problem | Solution |
 |---------|----------|
 | Marionette import fails | Use `./mach python /tmp/qa-test.py` instead of system `python3` |
-| Port 2828 busy | `lsof -i :2828 -t \| xargs kill -9` then relaunch |
+| Marionette port busy | `lsof -i :$(cat <worktree>/.marionette-port) -t \| xargs kill -9` then relaunch via `run.command` |
 | Firefox won't start | Check if another instance is using the same profile; use `-no-remote` flag. **Never kill other Firefox instances to free the profile.** |
 | Shadow DOM selector returns null | Add wait/poll loop; Lit components render async after `updateComplete` |
 | Auth wall blocks testing | Use demo `profile-default` which may have cached FxA session |
@@ -517,7 +573,7 @@ The `mcp__firefox-devtools` MCP server provides tools to interact with the runni
 |------|-------------|
 | `click_by_uid` | Click UI elements (buttons, links) found via `take_snapshot`. |
 | `fill_by_uid` | Type text into input fields. Alternative to Marionette smartbar interaction. |
-| `navigate_page` | Navigate to a URL. Use to move away from `about:newtab` before sidebar tests. |
+| `navigate_page` | Navigate to a URL. Use to move away from `about:newtab` before Smart Window tests. |
 | `hover_by_uid` | Test hover states on UI elements. |
 
 ### Recommended QA workflow
@@ -530,40 +586,40 @@ The `mcp__firefox-devtools` MCP server provides tools to interact with the runni
 
 ### Important limitations
 
-- DevTools MCP sees **content pages**, not chrome UI. It can see tab content but not the sidebar browser.
+- DevTools MCP sees **content pages**, not chrome UI. It can see tab content but not the Smart Window browser.
 - The chat content (`about:aichatcontent`) is in a remote frame that DevTools MCP also cannot access directly.
 - Use DevTools MCP and Marionette together — Marionette for chrome context, DevTools for content context and console/network.
 
 ---
 
-## Collaboration with /prototype-build
+## Collaboration with the Coordinator
 
-QA should not spend multiple cycles debugging the same class of issue. When tests fail:
+In **pipeline mode**, the coordinator does the routing — your job is to classify failures correctly. Behavior by classification:
 
-1. **Profile/env issues** (missing prefs, auth, MLEngine disabled): Fix directly by updating `user.js` or profile setup. Don't invoke `/prototype-build`.
-2. **Small code bugs** (wrong selector, missing import, CSS): Fix directly and retest. Max 3 cycles.
-3. **Architectural issues** (widget + LLM coexistence, data flow, state management): Report the root cause clearly and invoke `/prototype-build` to fix. Include:
-   - Which test failed and what the expected vs actual behavior was
-   - The specific error from `list_console_messages` or Marionette
-   - The file and line where the issue originates
-   - Whether it's a race condition, missing data, or wrong rendering
+1. **`infra`** — Fix in-place (update `user.js` for missing prefs, kill stale port, add wait, re-auth). Don't write a "needs fix from another skill" report. Re-test in the same cycle.
+2. **`spec`** — Report only. The coordinator re-spawns `/prototype-spec` with your failure report attached.
+3. **`design`** — Report only. The coordinator re-spawns `/prototype-design`.
+4. **`build`** — Report only. The coordinator re-spawns `/prototype-build`.
 
-Example handoff to `/prototype-build`:
-> **Failing test**: Weather widget disappears when LLM responds
-> **Root cause**: `#handleWeatherData` creates a standalone assistant entry without `convId`. When the LLM response arrives, `#checkConversationState` sees a convId mismatch and resets `conversationState`, wiping the widget.
-> **File**: `ai-chat-content.mjs`, `#handleWeatherData` method
-> **Fix needed**: Add `convId: lastUser?.convId` to the standalone entry
+In **standalone mode**, `build`-class small bugs you may fix directly (selector, import, CSS) — historical behavior. For larger issues, surface to the user.
+
+Example failure entry for the coordinator:
+> **Test:** Weather widget disappears when LLM responds
+> **Classification:** `build`
+> **Root cause:** `#handleWeatherData` creates a standalone assistant entry without `convId`. When the LLM response arrives, `#checkConversationState` sees a convId mismatch and resets `conversationState`, wiping the widget.
+> **File:** `ai-chat-content.mjs`, `#handleWeatherData` method
+> **Suggested fix:** Add `convId: lastUser?.convId` to the standalone entry
 
 ---
 
 ## Rules
 
-- **NEVER kill Firefox broadly.** Do NOT use `pkill firefox`, `killall firefox`, `pkill -f Firefox`, `pkill -f Nightly`, or any pattern-based kill that could terminate the user's regular Firefox Release or Nightly browsers. Only kill via the stored `$FIREFOX_PID` or by targeting the specific Marionette port (`lsof -i :2828 -t | xargs kill`). This is the most important rule.
+- **NEVER kill Firefox broadly.** Do NOT use `pkill firefox`, `killall firefox`, `pkill -f Firefox`, `pkill -f Nightly`, or any pattern-based kill that could terminate the user's regular Firefox Release or Nightly browsers. Only kill via the stored `$FIREFOX_PID` or by targeting the worktree-specific Marionette port (`lsof -i :$(cat <worktree>/.marionette-port) -t | xargs kill`). This is the most important rule.
+- **Classify every failure.** Every failure entry must have `spec | design | build | infra`. The coordinator routes based on this; an unlabeled or wrong label burns a cycle in the wrong layer.
 - **Use Firefox DevTools MCP tools actively.** Check console messages after every test action. Verify network requests for API calls. Don't rely solely on Marionette.
 - **Test against acceptance criteria, not your own expectations.** The PM spec is the source of truth. In standalone mode, derive criteria from the feature code.
-- **Always take screenshots.** Every test gets a screenshot, pass or fail. Use the Read tool to view them.
-- **Fix code directly when possible.** Small fixes (wrong selector, missing import, CSS tweak) should be fixed and retested, not just reported.
-- **Report structural failures to /prototype-build.** If the architecture is wrong (data flow, state management, race conditions), report clearly with root cause and let `/prototype-build` fix it.
+- **Always take screenshots.** Every test gets a screenshot, pass or fail. Use the Read tool to view them. In pipeline mode, save to `<artifact_dir>/screenshots/cycle-<N>-<name>.png`.
+- **Self-fix `infra` only.** In pipeline mode, do not patch source code for `spec`/`design`/`build` failures — classify and report; the coordinator routes. (In standalone mode, fixing small `build`-class bugs in-place is still allowed.)
 - **Clean up after yourself.** Kill only the Firefox instance you launched (by PID) and remove temp scripts when done.
-- **Max 3 fix cycles.** If it's not passing after 3 rounds, report and let the coordinator (or user) decide.
+- **Cycle caps differ by layer.** `qa_cycles.spec: max 1`, `qa_cycles.design: max 2`, `qa_cycles.build: max 3`, `qa_cycles.infra: unlimited`. Increment honestly so the coordinator can enforce.
 - **Check profile prefs and auth FIRST.** Most "silent failures" are caused by missing `browser.ml.enable`, missing FxA session, or fresh temp profiles. Verify before debugging code.
