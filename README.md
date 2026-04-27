@@ -80,5 +80,3 @@ Follow the setup instructions at: <https://firefox-source-docs.mozilla.org/setup
 ## License
 
 MIT
-
-<!-- setup test: standalone repo verified -->
