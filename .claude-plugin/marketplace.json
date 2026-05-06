@@ -12,6 +12,12 @@
       "category": "development"
     },
     {
+      "name": "brainstorm",
+      "description": "Brainstorm ideas for a new Firefox Smart Window feature with anti-bias domain-shift",
+      "source": "./brainstorm",
+      "category": "development"
+    },
+    {
       "name": "prototype",
       "description": "Coordinator that orchestrates the full prototype pipeline: spec, design, build, QA",
       "source": "./prototype",

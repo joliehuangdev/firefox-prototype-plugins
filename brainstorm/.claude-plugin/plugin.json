@@ -1,0 +1,8 @@
+{
+  "name": "brainstorm",
+  "description": "Brainstorm ideas for a new Firefox Smart Window feature, applying anti-bias domain-shift to avoid semantic clustering.",
+  "version": "1.0.0",
+  "author": {"name": "joliehuangdev"},
+  "license": "MIT",
+  "keywords": ["firefox", "smart-window", "brainstorming", "ideation", "discovery"]
+}

@@ -1,0 +1,4 @@
+{
+  "name": "qa-extension",
+  "description": "Automates loading, testing, debugging, and fixing a Firefox browser extension in a loop until all tests pass."
+}
