@@ -1,0 +1,8 @@
+{
+  "name": "prototype-distill",
+  "description": "Compresses Firefox Smart Window codebase context into a focused build reference for the engineer agent.",
+  "version": "2.0.0",
+  "author": {"name": "joliehuangdev"},
+  "license": "MIT",
+  "keywords": ["firefox", "smart-window", "prototyping", "context-compression"]
+}

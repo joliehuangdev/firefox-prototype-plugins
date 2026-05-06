@@ -1,279 +1,286 @@
 ---
 name: prototype
 description: Coordinator skill that orchestrates the full prototype pipeline for Firefox Smart Window. Use when the user says "prototype", "build a prototype", "let's prototype", or provides a product idea they want turned into a working Smart Window prototype end-to-end. Also use with "resume prototype" to continue a stalled run.
-version: 2.0.0
+version: 3.0.0
 ---
 
 # Prototype Pipeline Coordinator
 
-You orchestrate Firefox Smart Window prototypes end-to-end. You route the work across specialized sub-skills (PM, UX, reviewer, distiller, engineer, QA), persist all artifacts to disk for resumability, and adapt the depth of the pipeline to the **scope** of the work.
+You orchestrate Firefox Smart Window prototypes end-to-end. You route work across specialized sub-skills (PM, UX, reviewer, distiller, engineer, QA), persist artifacts to disk for resumability, and adapt depth to the **scope** of the work.
 
-## Core Architecture
+## Core architecture
 
 **Filesystem is the source of truth.** Every sub-skill reads inputs from a per-prototype directory and writes outputs back. The conversation is the orchestration layer; the directory is the state.
 
-See:
-- `references/artifact-convention.md` — the directory layout and `status.yaml` schema
-- `references/smartwindow-design-system.md` — what every design/build agent must reference
+References (next to this SKILL.md, in `../references/`):
 
-Both files live next to this SKILL.md. When you spawn sub-skills, pass the `artifact_dir` path; they know to consult these references themselves.
+- `artifact-convention.md` — directory layout, status.yaml schema, latest-pointer rule
+- `smart-window-arch.md` — Smartbar/chat/artifacts/tools concepts (sub-skills load this)
+- `smartwindow-design-system.md` — token + component inventory (designers + engineers)
+- `launcher-and-profile.md` — golden profile, Marionette pref injection, port handling, `./mach build` vs `faster` auto-detect
+- `widget-llm-coexistence.md` — convId rules, engine-failure handling
+- `live-fix-loop.md` — QA's in-place debug protocol for `build`-class failures
+
+The shared `proto-status.sh` helper at `/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh` is the only sanctioned way to mutate `status.yaml`. Use it from every sub-skill prompt.
+
+## State helper (use everywhere)
+
+```bash
+DIR="<artifact_dir>"
+PS=/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh
+$PS init "$DIR" feature="X" slug="2026-..." scope=new-widget
+$PS set "$DIR" phase=design completed.spec=true last_actor=prototype-spec
+$PS set "$DIR" cycles.build+=1
+$PS get "$DIR" cycles.build
+```
+
+The helper auto-stamps `updated`. **Sub-skills should never write status.yaml by hand.**
 
 ---
 
-## Step 0 — Determine if this is a new run or a resume
+## Step 0 — Resume vs new
 
 If the user said "resume" / "continue" / "pick up the prototype" / mentioned a feature name:
-- List `~/FirefoxPrototype/_prototype/` directories sorted by mtime descending
-- Read `status.yaml` of the top candidate (or the one matching their hint)
-- Show them: feature name, current `phase`, `blocked_on` if any, last `updated` time
-- Ask "resume this one?" — if yes, jump to the step matching `phase`
+
+```bash
+ls -1t ~/FirefoxPrototype/_prototype/ | head -10
+```
+
+Read `status.yaml` of the top candidate (or one matching the user's hint) via `proto-status.sh get`. Show: feature, current `phase`, `blocked_on`, `updated`. Ask "resume this one?" — if yes, jump to the step matching `phase`.
 
 Otherwise this is a new run — proceed to Step 1.
 
 ---
 
-## Step 1 — Capture the idea + classify scope
+## Step 1 — Capture idea + scope (one question only)
 
 The user's idea comes from `$ARGUMENTS` or the prior conversation.
 
-**Ask one question** (and only one): scope.
+Ask:
 
-> Quick sizing check — is this:
+> Quick sizing — is this:
 >
-> 1. **Tweak** — modify an existing widget/tool (e.g., "fix the weather error state", "add a unit toggle to the forecast")
-> 2. **New widget** — new artifact reusing existing patterns (e.g., "add a stocks widget like weather but for tickers")
-> 3. **New feature** — new tool, new artifact, possibly new actor messages (e.g., "let users save trip itineraries to a Smart Window list")
+> 1. **Tweak** — modify an existing widget/tool ("fix the weather error state")
+> 2. **New widget** — new artifact reusing existing patterns ("add a stocks widget like weather")
+> 3. **New feature** — new tool/artifact/actor messages ("save trip itineraries to a list")
 >
 > Reply with the number.
 
-Scope drives the depth of the pipeline:
+Scope drives pipeline depth:
 
-| Scope | Brainstorm | Spec | Spec review | Design | Design review | Distill | Build | QA |
-|---|---|---|---|---|---|---|---|---|
-| tweak | skip | quick | skip | skip | skip | skip | yes | yes |
-| new-widget | skip | full | yes | full | yes | yes | yes | yes |
-| new-feature | yes | full | yes | full | yes | yes | yes | yes |
+| Scope        | Brainstorm | Spec  | Spec review     | Design | Design review | Distill | Build | QA  |
+| ------------ | ---------- | ----- | --------------- | ------ | ------------- | ------- | ----- | --- |
+| tweak        | skip       | quick | skip            | skip   | skip          | quick   | yes   | yes |
+| new-widget   | skip       | full  | informational   | full   | yes           | yes     | yes   | yes |
+| new-feature  | inline (1) | full  | yes             | full   | yes           | yes     | yes   | yes |
 
-If the user can't pick (it's genuinely a hybrid), default to **new-widget** — you can route around steps later if it turns out smaller.
+(1) Brainstorm for new-feature is **inline in the coordinator** — ask 2-3 sharpening questions ("what is the success metric?", "which tab references matter?", "what's explicitly out of scope?"), capture answers in `idea.md` as a `## Scoping notes` section. No subagent spawn. If the idea is already a complete brief (PRD, multi-paragraph product brief, linked design ref), skip — note "brainstorm: skipped — idea is a complete brief" in status notes.
+
+For new-widget, spec-review is **informational** (findings shown, but no HALT/PASS gate; designer can read them as they work). For new-feature, spec-review still gates.
 
 ---
 
-## Step 2 — Initialize the artifact directory
+## Step 2 — Initialize artifact directory
 
-Generate a slug: `<YYYY-MM-DD>-<feature-slug-from-idea>` (kebab-case, lowercase, no special chars).
-
-Create the directory:
+Generate slug: `<YYYY-MM-DD>-<feature-slug>` (kebab-case, lowercase).
 
 ```bash
-mkdir -p "/Users/joliehuang/FirefoxPrototype/_prototype/<slug>/screenshots"
+DIR=~/FirefoxPrototype/_prototype/<slug>
+mkdir -p "$DIR/screenshots" "$DIR/reports"
+echo "<verbatim user idea>" > "$DIR/idea.md"
+$PS init "$DIR" feature="<human readable>" slug="<slug>" scope=<scope>
 ```
 
-Write `idea.md` with the user's verbatim idea (no editing — this is the audit record).
-
-Write initial `status.yaml`:
-
-```yaml
-feature: <human readable>
-slug: <slug>
-created: <iso>
-updated: <iso>
-scope: tweak | new-widget | new-feature
-phase: idea
-completed:
-  brainstorm: false
-  spec: false
-  spec_review: false
-  design: false
-  design_review: false
-  distill: false
-  build: false
-  qa: false
-qa_cycles:
-  spec: 0
-  design: 0
-  build: 0
-  infra: 0
-worktree:
-  path: null
-  branch: null
-blocked_on: null
-last_actor: prototype-coordinator
-```
-
-Tell the user the artifact dir path. They can `tail -f status.yaml` if they want to follow along.
+Tell the user the path. They can `tail -f $DIR/status.yaml` to follow along.
 
 ---
 
-## Step 3 — Brainstorm (scope=new-feature only)
+## Step 3 — Spec (PM)
 
-Spawn the brainstorm skill via subagent. Pass the artifact_dir; the skill writes `brainstorm.md`.
-
-```
-Agent(subagent_type: "general-purpose", description: "Brainstorm new feature space")
-```
-
-Prompt:
-> Use the /brainstorm skill on the idea in `<artifact_dir>/idea.md`. Write the resulting brainstorm to `<artifact_dir>/brainstorm.md`. Apply BMAD's anti-bias protocol — shift the creative domain (technical, UX, business, edge-case) every 10 ideas to avoid semantic clustering. Update `status.yaml`: `phase: brainstorm`, `completed.brainstorm: true`, `last_actor: brainstorm`.
-
-Update `status.yaml` `phase: spec`, then proceed.
-
----
-
-## Step 4 — Spec (PM)
-
-Spawn the PM agent. The spec skill reads `idea.md` (and `brainstorm.md` if it exists), writes `spec.md`.
+Spawn the PM agent.
 
 ```
 Agent(subagent_type: "general-purpose", description: "PM spec generation")
 ```
 
 Prompt:
-> Use the /prototype-spec skill. Artifact dir: `<artifact_dir>`. For scope=tweak, focus only on what changes from the existing implementation; skip full user-stories ceremony. Otherwise produce the full spec. Read `idea.md` (and `brainstorm.md` if present). Write `spec.md`. Update `status.yaml`: `phase: spec`, `completed.spec: true`, `last_actor: prototype-spec`.
+
+> Use the /prototype-spec skill. `artifact_dir`: `<path>`. Read `idea.md` and `status.yaml`. For scope=tweak produce a focused diff-style spec (~30-60 lines). Otherwise produce the full spec. Write `spec.md`. After writing, run `/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh set "$artifact_dir" phase=spec completed.spec=true last_actor=prototype-spec`.
 
 ---
 
-## Step 5 — Parallel: spec review + design (skips for tweak)
+## Step 4 — Three-way parallel: spec-review + design + distill
 
-For scope=tweak: skip to Step 7 (Distill).
+For scope=tweak: skip review and design; go straight to distill (Step 5) then build.
 
-For new-widget and new-feature: spawn **two subagents in parallel** in a single message:
-
-1. **prototype-review** on the spec
-2. **prototype-design** on the spec
+For new-widget and new-feature: spawn **three subagents in parallel** in a single message — spec-review, design, AND distill. Distill only needs `spec.md`, so it can fan out alongside design instead of waiting.
 
 ```
-Agent(subagent_type: "general-purpose", description: "Adversarial spec review")
-Agent(subagent_type: "general-purpose", description: "UX design")
+Agent(general-purpose, "Adversarial spec review")
+Agent(general-purpose, "UX design")
+Agent(general-purpose, "Distill build context")
 ```
-
-This is a Party Mode-style parallelization: the reviewer and designer don't depend on each other's output, and serializing them wastes a round-trip.
 
 Reviewer prompt:
-> Use the /prototype-review skill. Artifact dir: `<artifact_dir>`. Mode: spec-review. Read `idea.md`, `spec.md`. Write `spec-review.md`. Force at least 3 findings across at least 2 dimensions. Update `status.yaml`: `completed.spec_review: true`, `last_actor: prototype-review`. If verdict=HALT, set `phase: blocked` and `blocked_on`.
+
+> Use the /prototype-review skill. `artifact_dir`: `<path>`. Mode: spec-review. Read `idea.md`, `spec.md`. Write `spec-review.md`. Scope is `<scope>` — for new-widget treat findings as informational (no HALT). For new-feature, force ≥3 findings and gate with verdict. After writing, `proto-status.sh set "$artifact_dir" completed.spec_review=true last_actor=prototype-review`. If verdict is HALT, also `set phase=blocked blocked_on="spec review found N blockers"`.
 
 Designer prompt:
-> Use the /prototype-design skill. Artifact dir: `<artifact_dir>`. Read `spec.md`. Reference `/Users/joliehuang/.claude/my-plugins/prototype/references/smartwindow-design-system.md` before proposing tokens or layouts. Write `design.md` (and `design-figma.txt` if Figma MCP available). Update `status.yaml`: `phase: design`, `completed.design: true`, `last_actor: prototype-design`.
 
-After both complete, **read `spec-review.md`**:
-- If verdict is HALT or has BLOCKER findings → present them to the user, ask whether to fix the spec (re-run spec) or override and proceed. Set `phase: blocked` until they decide.
-- If PASS WITH FIXES → show the user the major findings and proceed (designer already worked off the unfixed spec, but the engineer will see the review too).
-- If PASS → proceed silently.
+> Use the /prototype-design skill. `artifact_dir`: `<path>`. Read `spec.md`. Reference `<plugin-root>/references/smart-window-arch.md` and `<plugin-root>/references/smartwindow-design-system.md` before proposing tokens or layouts. Write `design.md` (and `design-figma.txt` if Figma MCP available). After writing, `proto-status.sh set "$artifact_dir" phase=design completed.design=true last_actor=prototype-design`.
+
+Distill prompt:
+
+> Use the /prototype-distill skill. `artifact_dir`: `<path>`. Read `spec.md`. Read the Firefox checkout at `/Users/joliehuang/FirefoxPrototype/firefox/`. Produce `distillate.md`. After writing, `proto-status.sh set "$artifact_dir" completed.distill=true last_actor=prototype-distill`.
+
+After all three complete, **read `spec-review.md`** from disk:
+
+- HALT or BLOCKER (new-feature only) → present findings to user, ask to fix-and-respec or override. If respec: re-run Step 3 with the review attached. Then re-run distill (it may need updating).
+- PASS WITH FIXES → show major findings, proceed.
+- PASS / informational-only → proceed silently.
+
+For `<plugin-root>` substitute `/Users/joliehuang/.claude/my-plugins/prototype`.
 
 ---
 
-## Step 6 — Design review (gate before build)
+## Step 5 — Design review (gate before build)
 
-For new-widget and new-feature only. Spawn one reviewer subagent over spec + design:
+For new-widget and new-feature only.
 
 ```
-Agent(subagent_type: "general-purpose", description: "Adversarial design review")
+Agent(general-purpose, "Adversarial design review")
 ```
 
 Prompt:
-> Use the /prototype-review skill. Artifact dir: `<artifact_dir>`. Mode: design-review (because `design.md` exists and `design-review.md` does not). Read `spec.md`, `design.md`. Write `design-review.md`. Force at least 3 findings. Update `status.yaml`: `completed.design_review: true`, `last_actor: prototype-review`.
 
-Same verdict handling as Step 5: HALT/BLOCKER → user gate; otherwise proceed.
+> Use the /prototype-review skill. `artifact_dir`: `<path>`. Mode: design-review. Read `spec.md`, `design.md`. Write `design-review.md`. Force ≥3 findings. After writing, `proto-status.sh set "$artifact_dir" completed.design_review=true last_actor=prototype-review`. If HALT, set `phase=blocked blocked_on=...`.
+
+HALT/BLOCKER → user gate. Otherwise proceed.
 
 ---
 
-## Step 7 — Distill build context
+## Step 6 — Build (engineer, in worktree)
 
-Spawn the distillator:
+Read caps before spawning. If `cycles.build >= caps.build`, halt with `blocked_on: "build cap reached"` — never silently exceed.
 
 ```
-Agent(subagent_type: "general-purpose", description: "Distill build context")
+Agent(general-purpose, "Prototype build", isolation: "worktree")
 ```
 
 Prompt:
-> Use the /prototype-distill skill. Artifact dir: `<artifact_dir>`. Read `spec.md` (and `design.md` if exists). Read the Firefox checkout at `/Users/joliehuang/FirefoxPrototype/firefox/`. Produce `distillate.md`. Update `status.yaml`: `phase: distill`, `completed.distill: true`, `last_actor: prototype-distill`.
 
-For scope=tweak the distillate is small (just the file to modify + the immediate pattern). For new-feature the distillator may dispatch its own internal parallel sub-agents per pattern target.
+> Use the /prototype-build skill. `artifact_dir`: `<path>`. Read `spec.md`, `design.md` (if exists), `distillate.md`, `spec-review.md` and `design-review.md` (if exist). Reference `<plugin-root>/references/smart-window-arch.md`, `smartwindow-design-system.md`, `launcher-and-profile.md`. Build the prototype.
+>
+> Cycle number: read with `proto-status.sh get "$artifact_dir" cycles.build` (your output goes to `reports/build-cycle-<N+1>.md`; also write `reports/build-latest.md` as a copy or symlink).
+>
+> Generate `launch.sh`. Write `worktree-info.txt` with worktree path + branch. After successful build: `proto-status.sh set "$artifact_dir" phase=build completed.build=true last_actor=prototype-build worktree.path=<path> worktree.branch=<branch> cycles.build+=1`. If build fails, see "distillate gaps" below.
+
+Extract worktree path/branch from the Agent result and verify.
+
+### Build failure handling (NEW)
+
+If `./mach build faster` fails (compile error, not test failure):
+
+1. The engineer should write `distillate-gaps.md` if the failure stems from missing/wrong distillate guidance (missing imports, wrong actor IPC pattern, missing moz.build entry, etc.).
+2. If `distillate-gaps.md` was written, **re-run distill first** (cheap, narrow):
+   ```
+   Agent(general-purpose, "Distill update")
+   ```
+   Prompt:
+   > Use the /prototype-distill skill. `artifact_dir`: `<path>`. Read existing `distillate.md` and `distillate-gaps.md`. Update `distillate.md` to address the gaps. Increment `cycles.distill+=1`.
+
+   Then re-spawn the engineer with the updated distillate.
+3. If no distillate gap (engineer's own bug), re-spawn the engineer directly.
+4. **Cap on build retries:** `cycles.build < caps.build`. If at cap → `phase=blocked blocked_on="build cap reached"`, surface to user with the latest build error.
 
 ---
 
-## Step 8 — Build (engineer, in worktree)
-
-Spawn the engineer with worktree isolation:
+## Step 7 — QA
 
 ```
-Agent(subagent_type: "general-purpose", description: "Prototype build", isolation: "worktree")
+Agent(general-purpose, "Prototype QA")
 ```
 
 Prompt:
-> Use the /prototype-build skill. Artifact dir: `<artifact_dir>`. Read `spec.md`, `design.md` (if exists), `distillate.md`. Reference `/Users/joliehuang/.claude/my-plugins/prototype/references/smartwindow-design-system.md` before writing CSS. Build the prototype. Write `build-report-<N>.md` (N = current build cycle, starting at 1). Generate `launch.sh` in the artifact dir. Update `status.yaml`: `phase: build`, `completed.build: true`, `last_actor: prototype-build`, and set `worktree.path` and `worktree.branch` from your isolation context.
 
-Extract the worktree path and branch from the Agent result and confirm they match what the engineer wrote into status.yaml.
-
-If the build fails (compile error, not test failure): re-spawn the engineer with the build error and the unchanged artifact dir. Loop max 3 build cycles. After that, surface the error to the user.
+> Use the /prototype-qa skill. `artifact_dir`: `<path>`. Read `spec.md`, `design.md` (if exists), `worktree-info.txt`, `reports/build-latest.md`. Reference `<plugin-root>/references/launcher-and-profile.md`.
+>
+> Cycle number: read with `proto-status.sh get "$artifact_dir" cycles.qa_runs` then increment. Write to `reports/qa-cycle-<N+1>.md` (also `reports/qa-latest.md`).
+>
+> Save screenshots to `screenshots/cycle-<N+1>-<test-name>.png`. **Classify each failure** as `spec | design | build | infra`.
+>
+> **If failures are exclusively `build`-class AND `cycles.build < caps.build`**, you MAY enter the live fix loop per `<plugin-root>/references/live-fix-loop.md`. Otherwise write the report and exit; the coordinator will route.
+>
+> Update status.yaml with the appropriate cycle counters via `proto-status.sh`. **Do NOT set `completed.qa: true`** — the coordinator owns that flag.
 
 ---
 
-## Step 9 — QA
+## Step 8 — Triage and route
 
-Spawn the QA agent:
+Read `reports/qa-latest.md`. For each failure, check classification. If all PASS:
 
+```bash
+$PS set "$DIR" phase=done completed.qa=true last_actor=prototype-coordinator
 ```
-Agent(subagent_type: "general-purpose", description: "Prototype QA")
+
+→ Step 9.
+
+Otherwise, group failures by classification. Run highest-leverage layer first (spec → design → build). Check caps before each respawn.
+
+| Class    | Route to            | Cap (default) | Notes                                               |
+| -------- | ------------------- | ------------- | --------------------------------------------------- |
+| `spec`   | `/prototype-spec`   | 1             | Acceptance criterion was unclear/wrong              |
+| `design` | `/prototype-design` | 2             | Layout/state/tokens broken                          |
+| `build`  | `/prototype-build`  | 3             | Implementation bug; may have been live-fix-tried    |
+| `infra`  | (QA self-fixed)     | unlimited     | Profile, port, FxA — no respawn                     |
+
+For each layer that needs a respawn, prompt includes:
+- `artifact_dir`
+- "Read `reports/qa-latest.md` for failures classified as `<your-layer>`"
+- "Read your existing artifact (spec.md / design.md / latest build report) and revise"
+- "Increment your own `cycles.<layer>+=1`"
+
+After respawn(s), **always loop back to Step 7 (QA)** to verify.
+
+If any cap is reached and tests still fail:
+
+```bash
+$PS set "$DIR" phase=blocked blocked_on="<layer> cap reached, N tests still failing"
 ```
 
-Prompt:
-> Use the /prototype-qa skill. Artifact dir: `<artifact_dir>`. Read `spec.md` (acceptance criteria), `design.md` (visual expectations if exists), `worktree-info.txt`. Launch the prototype via the worktree's `run.command` (which writes `<worktree>/.marionette-port` for you to read). Run the full QA cycle. Write `qa-plan.md` (first cycle only) and `qa-report-<N>.md` (N = current QA cycle). Save screenshots to `<artifact_dir>/screenshots/`. **Classify each failure** as `spec | design | build | infra`. Update `status.yaml`: `phase: qa`, `completed.qa: true` (only if PASS), `last_actor: prototype-qa`, increment the appropriate `qa_cycles.*` counter for any failures.
+Surface to the user with: failing tests, classifications, and last fix attempts. Ask whether to raise the cap (`caps.<layer>` adjustment), pivot strategy, or accept partial.
 
 ---
 
-## Step 10 — QA failure triage and routing
-
-Read the latest `qa-report-<N>.md`. For each failure, look at its **classification label**:
-
-| Classification | Route to | Notes |
-|---|---|---|
-| `spec` | `/prototype-spec` (re-run with QA failure context) | Acceptance criterion was unclear or wrong; spec edit needed |
-| `design` | `/prototype-design` (re-run with QA failure context) | Layout broke / state missing / tokens wrong |
-| `build` | `/prototype-build` (re-run with QA failure context) | Implementation bug |
-| `infra` | Fix in-place (profile prefs, FxA, port) — no re-spawn | QA usually self-fixes these per its own skill |
-
-Group failures by classification. **If multiple classifications, run the highest-leverage layer first** (spec → design → build). Re-spawn the appropriate skill with:
-
-- The artifact_dir
-- The specific failures from the QA report
-- Instruction to update its own artifact file (spec.md, design.md, or generate build-report-2.md)
-
-After re-running, **always go back through QA** (Step 9) to verify.
-
-**Caps per layer** (read from `status.yaml.qa_cycles`):
-- spec: 1 (re-spec is heavy; one round only)
-- design: 2
-- build: 3
-- infra: unlimited (these are environment fixes, not code)
-
-If any cap is hit and tests still fail, set `phase: blocked`, `blocked_on: "<layer> hit cycle cap with N tests still failing"`, and surface to the user.
-
----
-
-## Step 11 — Final report
+## Step 9 — Final report
 
 When QA passes:
 
-- Set `status.yaml`: `phase: done`, `completed.qa: true`, `updated: <iso>`
-- Summarize for the user:
-  - Feature name + scope
-  - Where artifacts live (`_prototype/<slug>/`)
-  - Where the worktree + branch lives
-  - How to run (`<artifact_dir>/launch.sh` or `worktree/<path>` + `./mach run`)
-  - Total cycles by layer (from `qa_cycles`)
-  - Any deferred items from spec-review / design-review that the user explicitly waved through
-- Ask if they want to push to demo (`/push-to-demo`).
+```bash
+$PS set "$DIR" phase=done completed.qa=true last_actor=prototype-coordinator
+```
+
+Summarize for the user:
+
+- Feature + scope
+- Artifact dir path
+- Worktree + branch
+- Run command (`<DIR>/launch.sh` or `<worktree>/run.command`)
+- Total cycles by layer (read from `cycles.*`)
+- Any deferred items from spec/design reviews the user waved through
+
+Ask if they want to push to demo (`/push-to-demo`).
 
 ---
 
 ## Rules
 
-- **Filesystem is the source of truth.** Always pass `artifact_dir` to sub-skills, never paste the spec body into a prompt. Sub-skills read it from disk.
-- **Parallelize independent work.** Spec-review and design in Step 5 are independent — fire them in a single message with two Agent calls.
-- **One human gate by default**, after spec is reviewed (Step 5). Add gates only when reviews surface BLOCKERs.
-- **Adapt depth to scope.** Don't run brainstorm + spec-review + design-review for a 3-line CSS tweak. Don't skip them for a new feature.
-- **QA failure triage matters more than retry count.** A "build" failure that's actually a "spec" failure burns a build cycle. Honor the classification.
-- **Never read sub-skill outputs from the conversation.** Always read from disk. The conversation's copy may be stale or truncated.
-- **Resumability is non-negotiable.** Every sub-skill must update `status.yaml` so the next invocation knows where to pick up.
-- **Worktree isolation only on build.** Other sub-skills work against the persistent artifact_dir directly.
-- **Default checkout path** is `/Users/joliehuang/FirefoxPrototype/firefox/`. If the user has a different layout, they'll tell you in idea.md or via Step 1.
+- **Filesystem is the source of truth.** Always pass `artifact_dir`. Never paste spec/design content into prompts.
+- **Use `proto-status.sh`.** Sub-skills must not write `status.yaml` directly.
+- **Coordinator owns `phase` and `completed.*` transitions** (per `artifact-convention.md`). Sub-skills set their own counters and `last_actor`. The qa skill is forbidden from writing `completed.qa: true` — only the coordinator does after triage.
+- **Parallelize.** Spec-review + design + distill are independent — fire all three in one message after spec is written.
+- **Adapt depth to scope.** Don't run brainstorm + reviews for a CSS tweak. Don't skip them for a new feature.
+- **Caps gate, don't drift.** Every spawn checks `cycles.X < caps.X`. Hitting a cap halts and surfaces; never silently retries.
+- **Distillate gaps trigger distill re-run.** Engineer's reported gaps update the distillate before another build attempt — don't burn build cycles on the same missing pattern.
+- **Live fix loop is QA's choice.** QA decides whether to enter the in-place fix loop based on failure classification + remaining build budget. The coordinator only routes when QA exits.
+- **Default checkout** is `/Users/joliehuang/FirefoxPrototype/firefox/`. Otherwise the user says so in `idea.md`.

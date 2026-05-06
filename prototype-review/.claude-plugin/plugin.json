@@ -1,0 +1,8 @@
+{
+  "name": "prototype-review",
+  "description": "Adversarial review agent that finds problems in prototype specs and designs before they reach build.",
+  "version": "2.0.0",
+  "author": {"name": "joliehuangdev"},
+  "license": "MIT",
+  "keywords": ["firefox", "smart-window", "prototyping", "review", "adversarial"]
+}

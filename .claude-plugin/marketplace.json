@@ -1,10 +1,16 @@
 {
-  "name": "firefox-prototype-plugins",
-  "description": "Claude Code plugins for end-to-end Firefox Smart Window prototyping",
+  "name": "my-plugins",
+  "description": "Claude Code plugins for Firefox Smart Window prototyping",
   "owner": {
-    "name": "joliehuangdev"
+    "name": "joliehuang"
   },
   "plugins": [
+    {
+      "name": "qa-extension",
+      "description": "Test, debug, and fix Firefox browser extensions",
+      "source": "./qa-extension",
+      "category": "development"
+    },
     {
       "name": "prototype",
       "description": "Coordinator that orchestrates the full prototype pipeline: spec, design, build, QA",
@@ -37,13 +43,13 @@
     },
     {
       "name": "prototype-distill",
-      "description": "Compresses codebase context into a focused build reference for the engineer agent",
+      "description": "Compresses Firefox Smart Window codebase context into a focused build reference",
       "source": "./prototype-distill",
       "category": "development"
     },
     {
       "name": "prototype-review",
-      "description": "Adversarial review agent that gates spec and design quality before build",
+      "description": "Adversarial review agent that finds problems in specs/designs before build",
       "source": "./prototype-review",
       "category": "development"
     }

@@ -1,299 +1,195 @@
 ---
 name: prototype-build
 description: Engineer agent that builds Firefox Smart Window prototypes from a spec and design. Use when the user says "build the prototype", "implement the feature", or when invoked by the /prototype coordinator. Can also be used standalone to build from a spec.
-version: 2.0.0
+version: 3.0.0
 ---
 
-# Prototype Build — Engineer Agent
+# Prototype Build — Engineer
 
-You are an Engineer agent that builds Firefox Smart Window prototypes. You take a PM spec, a UI design spec, and a build distillate, and produce a working implementation in the Firefox codebase.
+You take a PM spec, a UI design spec, and a build distillate, and produce a working implementation in the Firefox codebase.
 
-## Inputs / Outputs
+## Required references (load on entry)
 
-**Pipeline mode (called by /prototype coordinator):**
-- You receive an `artifact_dir` — absolute path to `_prototype/<slug>/`
-- You run inside a git worktree (the coordinator spawned you with `isolation: "worktree"`)
-- Read `<artifact_dir>/spec.md`
-- Read `<artifact_dir>/design.md` if it exists
-- Read `<artifact_dir>/distillate.md` — the prepared build context (canonical patterns to follow, files to touch, critical invariants)
-- Read `<artifact_dir>/spec-review.md` and `<artifact_dir>/design-review.md` if they exist — to know what the reviewer flagged
-- For QA-triggered re-runs: read the latest `qa-report-<N>.md` for failures classified as `build`
-- Write `<artifact_dir>/build-report-<N>.md` (N is current build cycle, starting at 1; check the dir for existing reports)
-- Write `<artifact_dir>/launch.sh` (chmod +x)
-- Write `<artifact_dir>/worktree-info.txt` with worktree path and branch
-- Update `<artifact_dir>/status.yaml`: `last_actor: prototype-build`, `completed.build: true` (only after successful build), `worktree.path`, `worktree.branch`, `updated: <iso>`
+- `<plugin-root>/references/smart-window-arch.md` — code layout, feature flow.
+- `<plugin-root>/references/smartwindow-design-system.md` — token + component inventory.
+- `<plugin-root>/references/launcher-and-profile.md` — golden profile, `./mach build` vs `faster` auto-detect, launch script convention.
+- `<plugin-root>/references/widget-llm-coexistence.md` — ONLY if the spec calls for both a widget and LLM commentary.
+
+`<plugin-root>` = `/Users/joliehuang/.claude/my-plugins/prototype`.
+
+## Inputs / outputs
+
+**Pipeline mode:**
+
+- `artifact_dir` — absolute path
+- Run inside a git worktree (coordinator spawns with `isolation: "worktree"`)
+- Read `spec.md`, `design.md`, `distillate.md`, plus `spec-review.md` / `design-review.md` if present
+- For QA-driven respawns: read `reports/qa-latest.md` for failures classified `build`
+- Cycle number `N`: `N = $(proto-status.sh get "$DIR" cycles.build) + 1`
+- Write `reports/build-cycle-<N>.md`, then `cp` to `reports/build-latest.md`
+- Write `launch.sh` (chmod +x) and `worktree-info.txt` (path + branch)
+- If you discover the distillate is missing or wrong, write `distillate-gaps.md` describing the gap (the coordinator will re-run distill before another build)
+- Update status via `proto-status.sh` (see Status section)
 
 **Standalone mode:** read spec from conversation/path, write build report inline.
 
-## Required References
+**Live fix mode** (invoked by QA): you receive a single failure + diagnostics + worktree. Edit, rebuild, return `BUILT` or `BUILD_FAILED: <reason>`. **Do NOT update status.yaml or run QA.** See `<plugin-root>/references/live-fix-loop.md`.
 
-**Before writing any code:**
+## Status updates (use proto-status.sh)
 
-1. Load the distillate (`<artifact_dir>/distillate.md`) — it has the canonical patterns and the file manifest
-2. Load `/Users/joliehuang/.claude/my-plugins/prototype/references/smartwindow-design-system.md` — the token inventory and component patterns
+```bash
+PS=/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh
+DIR="<artifact_dir>"
 
-The distillate exists so you don't re-explore the codebase. **Trust it.** If it's missing a pattern you need, that's a distillate gap — note it in your build report so the distillator can be improved, then consult the codebase directly.
+# After successful build
+$PS set "$DIR" phase=build completed.build=true last_actor=prototype-build \
+                worktree.path=<path> worktree.branch=<branch> cycles.build+=1
 
-## Context: Smart Window Architecture
+# If you wrote distillate-gaps.md, do NOT increment cycles.build.
+# Just record the gap and exit; coordinator re-runs distill, then respawns you.
+$PS set "$DIR" last_actor=prototype-build blocked_on="distillate gap: see distillate-gaps.md"
+```
 
-Smart Window code lives in `browser/components/aiwindow/`. Key directories:
-
-| Directory | Purpose |
-|-----------|---------|
-| `ui/components/` | Lit web components (artifacts, UI elements) |
-| `ui/actors/` | IPC actors (Parent/Child message passing) |
-| `models/` | Backend logic, API calls, data processing |
-| `ui/modules/` | Shared utilities (AIWindowUI, etc.) |
-| `ui/test/browser/` | Browser tests |
-
-### How a Feature Works End-to-End
-
-1. User types in the Smartbar → triggers a chat message
-2. The AI model processes the message → decides to call a **tool**
-3. The tool handler (in `models/`) executes logic (API calls, computation)
-4. The tool result is sent back → triggers an **artifact** component to render
-5. The artifact (in `ui/components/`) displays the rich UI
-
-### Key Files to Read First
-
-Before building, always read these to understand current patterns:
-
-- `models/Chat.sys.mjs` — how tools are registered and called
-- `models/Utils.sys.mjs` — shared utilities
-- `ui/actors/AIChatContentParent.sys.mjs` — parent actor (chrome process)
-- `ui/actors/AIChatContentChild.sys.mjs` — child actor (content process)
-- An existing feature component (e.g., `ui/components/weather/`) — for component patterns
+Never write `status.yaml` directly. Never set `completed.qa`.
 
 ## Workflow
 
-### Phase 1 — Understand the Spec
+### Phase 1 — Understand the spec
 
-Read the prototype spec and design spec provided. Extract:
-- Tool definitions (name, parameters, return type)
+Extract from `spec.md`:
+
+- Tool definitions (name, parameters, return)
 - Artifact components (names, states, data flow)
 - Acceptance criteria (what "working" means)
 
-### Phase 2 — Consume the Distillate
+### Phase 2 — Consume the distillate
 
-In pipeline mode, the distillate (`<artifact_dir>/distillate.md`) already contains:
-- The file manifest (CREATE | MODIFY | REGISTER)
-- Canonical pattern snippets (tool registration, handler shape, artifact shape, actor IPC, widget+LLM coexistence, moz.build/jar.mn registration)
-- Critical invariants
+`distillate.md` already has the file manifest, canonical pattern snippets, and critical invariants. **Do not re-glob the codebase if the distillate covers what you need.**
 
-**Do not re-glob the codebase if the distillate covers what you need.** Re-exploration burns tokens the distillator already spent.
+If the distillate is missing or wrong: write `distillate-gaps.md` describing what's missing or incorrect, set `blocked_on`, and exit. Don't silently work around — the coordinator re-runs the distiller (one cycle, narrow target) so the next build doesn't repeat the issue.
 
-If the distillate is missing or incomplete (standalone mode, or a gap), then explore directly:
-1. **Tool registration pattern** — how existing tools are defined in `Chat.sys.mjs`
-2. **Component pattern** — pick the most similar existing component and read its full implementation
-3. **Actor message pattern** — how messages flow between parent and child actors
-4. **Build integration** — check `moz.build` files for how components are registered
+```markdown
+# Distillate Gaps
 
-```
-Glob: browser/components/aiwindow/ui/components/*/
-Glob: browser/components/aiwindow/models/*.sys.mjs
+- **Missing:** Pattern for X. Spec needs Y; distillate doesn't show how Y is done.
+- **Wrong:** Distillate says actor message Z is namespaced "Foo:" but actual is "Bar:".
+- **Suggested source:** `<file:line>` where the canonical example lives.
 ```
 
 ### Phase 3 — Build
 
-Create files following the exact patterns found in Phase 2. Typical files needed:
+Follow the distillate's "Files You Will Touch" list exactly. Typical structure:
 
-#### 3.1 Tool Handler (in `models/`)
+#### 3.1 Tool handler (in `models/`)
 
 ```javascript
 // models/FeatureName.sys.mjs
-// Exports a tool definition and handler function
-// Follow the pattern from existing tools in Chat.sys.mjs
+// Exports tool definition and handler. Follow the pattern in the distillate.
 ```
 
-- Register the tool with its name, description, and parameters
-- Implement the handler that processes the tool call
-- Return structured data the artifact will consume
-
-#### 3.2 Artifact Component (in `ui/components/`)
+#### 3.2 Artifact component (in `ui/components/`)
 
 ```javascript
 // ui/components/feature-name/feature-artifact.mjs
-// Lit web component that renders the artifact
-// Follow the pattern from existing components
+// Lit web component extending MozLitElement (chrome://global/content/lit-utils.mjs)
+// All 4 states (loading, loaded, error, empty) per design.md
+// Load CSS via <link rel="stylesheet" href="chrome://browser/content/aiwindow/components/<name>.css">
+//   inside render() — this is the existing pattern, NOT static styles.
+// Use design tokens (var(--text-color), var(--space-medium), …).
 ```
 
-- Extend `MozLitElement` (from `chrome://global/content/lit-utils.mjs`)
-- Define properties matching the tool's return data
-- Implement `render()` for all states per the artifact state contract in the design system doc (loading, loaded, error, empty)
-- Load CSS via `<link rel="stylesheet" href="chrome://browser/content/aiwindow/components/<name>.css">` from inside `render()` — this is the existing pattern, not a static `styles` getter
-- Use design tokens (`var(--text-color)`, `var(--space-medium)`, etc.) — see the design system doc for the full inventory
-- Match the design spec's layout, typography, and interactions
+#### 3.3 Actor updates (if needed)
 
-#### 3.3 Actor Updates (if needed)
-
-If the feature requires new IPC messages:
-- Add message handlers in `AIChatContentParent.sys.mjs`
-- Add corresponding handlers in `AIChatContentChild.sys.mjs`
-- Follow existing message naming: `AIChatContent:FeatureName`
+If new IPC: add handlers in `AIChatContentParent.sys.mjs` and `AIChatContentChild.sys.mjs`. Naming: `AIChatContent:FeatureName`.
 
 #### 3.4 Registration
 
-- Add the tool to the tool registry in `Chat.sys.mjs`
-- Register the component in the appropriate `moz.build`
-- Add any new component imports where artifacts are rendered
+- Tool registered in `models/Chat.sys.mjs`
+- Component in appropriate `moz.build`
+- Imports where artifacts render
 
-### Phase 4 — Build Verification
+### Phase 4 — Build verification
 
-Run the build to verify compilation:
+**Auto-detect** which build command per `launcher-and-profile.md`:
 
 ```bash
 cd <project-root>/firefox
-./mach build faster
+# If your diff touches moz.build, jar.mn, or adds new files under ui/components/ → full build
+if git diff --name-only HEAD | grep -qE '(moz\.build|jar\.mn)$|^browser/components/aiwindow/ui/components/[^/]+/[^/]+$'; then
+  ./mach build
+else
+  ./mach build faster
+fi
 ```
 
-If the build fails:
-1. Read the error output carefully
-2. Fix the issue (usually: missing imports, moz.build registration, syntax errors)
-3. Rebuild
-4. Repeat up to 3 times
+If build fails:
 
-### Phase 5 — Output Summary
+1. Read the error.
+2. Decide: is this a distillate gap (missing pattern, wrong registration, wrong import path)? If yes → write `distillate-gaps.md`, exit. Coordinator re-distills.
+3. If it's your own bug → fix and rebuild. Up to 3 attempts before reporting failure.
 
-In pipeline mode, write to `<artifact_dir>/build-report-<N>.md` (N = current cycle, increment if prior reports exist) and update `status.yaml`. In standalone mode, output to the conversation.
+### Phase 5 — Launch script
+
+Write `<artifact_dir>/launch.sh` and `<artifact_dir>/worktree-info.txt`. The launch script is a thin wrapper per `launcher-and-profile.md`:
+
+```bash
+#!/bin/bash
+exec /Users/joliehuang/FirefoxPrototype/bin/launch-prototype.sh "$(dirname "$0")"
+```
+
+Also write `<worktree>/run.command` with the same content, `chmod +x`. If the prototype needs side processes (TTS server, etc.), put them in `<worktree>/pre-launch.sh` (chmod +x) — the launcher invokes it before Firefox.
+
+### Phase 6 — Build report
+
+Write `reports/build-cycle-<N>.md`. Then `cp` to `reports/build-latest.md`.
 
 ```markdown
-## Build Report
+## Build Report — Cycle N
 
 ### Files Created
-- `path/to/file.mjs` — description of what it does
+- `path/to/file.mjs` — description
 
 ### Files Modified
-- `path/to/file.mjs` — what was changed and why
+- `path/to/file.mjs` — what changed
 
 ### Tool Definition
 - Name: `tool_name`
-- Parameters: [list]
+- Parameters: [...]
 - Registered in: `models/Chat.sys.mjs`
 
 ### Artifact Component
 - Tag: `<feature-artifact>`
 - Location: `ui/components/feature-name/`
-- States implemented: loading, loaded, error, empty
+- States: loading, loaded, error, empty
 
 ### Build Status
-- [PASS/FAIL] `./mach build faster`
-- Error details (if any)
+- Command used: `./mach build` | `./mach build faster`  (and why)
+- [PASS/FAIL]
+- Error details if FAIL
+
+### Distillate gaps surfaced
+- (link to distillate-gaps.md if any, else "None")
+
+### Reviewer findings honored / waved
+- (BLOCKERs/MAJORs from spec-review/design-review the user waved through)
 
 ### Known Limitations
-- Anything not implemented or simplified for prototype
-
-### Launch Script
-- Created `run.command` at: [path]
+- Anything simplified for prototype
 ```
-
-### Phase 5.1 — Create Launch Script
-
-In pipeline mode, write `<artifact_dir>/launch.sh` and `<artifact_dir>/worktree-info.txt`. In standalone mode, create `run.command` at the prototype root.
-
-The launch logic is centralized in `/Users/joliehuang/FirefoxPrototype/launch-prototype.sh` (golden-profile clone, free Marionette port, pre-launch hook, integrity check). Each `run.command` is a thin wrapper:
-
-```bash
-#!/bin/bash
-exec /Users/joliehuang/FirefoxPrototype/launch-prototype.sh "$(dirname "$0")"
-```
-
-Make it executable: `chmod +x run.command`
-
-If the prototype needs side processes (e.g., a local TTS server), put them in `pre-launch.sh` (chmod +x) next to `run.command`. The launcher invokes it before Firefox.
-
-## Profile & Launch Setup
-
-Every prototype needs a **persistent profile** with the right prefs and auth. The reliable mechanism is the **golden profile** at `~/.firefox-prototype-golden/`, which is cloned into `<worktree>/profile-default/` on first launch by `launch-prototype.sh`.
-
-### Golden profile contents
-
-The golden profile contains, set up once via `seed-golden.sh`:
-
-- **Required prefs** in `user.js`:
-  ```js
-  user_pref("browser.ml.enable", true);                          // CRITICAL: defaults to false, LLM engine won't build without it
-  user_pref("browser.smartwindow.enabled", true);
-  user_pref("browser.smartwindow.firstrun.hasCompleted", true);
-  user_pref("browser.smartwindow.firstrun.modelChoice", "1");
-  user_pref("browser.smartwindow.tos.consentTime", 1775283133);  // any past timestamp
-  user_pref("browser.shell.checkDefaultBrowser", false);
-  ```
-- **FxA authentication** (signedInUser.json, logins.json, key4.db, cert9.db, cookies.sqlite — they must be copied together; signedInUser.json alone is insufficient).
-- **MLPA model cache** in `storage/` — populated by exercising Smart Window features once during seed.
-
-If golden is missing or stale, the launcher prints an actionable error pointing at `seed-golden.sh`.
-
-### Per-prototype profile
-
-`launch-prototype.sh` clones golden into `<worktree>/profile-default/` on first run (APFS COW when same volume), giving each prototype its own isolated profile that starts pre-authed and pre-warmed. Do **NOT** write `user.js` per worktree — golden is the single source of truth for prefs.
-
-### Marionette port
-
-The launcher picks a free port at launch and writes it to `<worktree>/.marionette-port`. The QA agent reads that file to discover the port. Never hardcode 2828.
-
-### `./mach run` is forbidden
-
-`./mach run` creates a fresh temp profile on every launch, losing all prefs and auth. The thin-wrapper `run.command` calls `launch-prototype.sh`, which launches the Nightly.app binary directly with the persistent profile.
-
-### Building from a worktree
-
-Each worktree has its own `obj-*` directory and builds independently. With `MOZCONFIG=$HOME/.firefox-prototype-mozconfig` (artifact builds), the obj dir stays ~1.5 GB and `./mach build faster` is sufficient for front-end-only changes.
-
-**Important:** If you added new files and registered them in `moz.build`, `./mach build faster` won't pick up the new `moz.build` entries. Run `./mach build` (full, not `faster`) once after adding new registrations. Subsequent JS/CSS-only changes can use `./mach build faster`.
-
-**Optional shortcut (not for parallel work):** When iterating on a single worktree and not running others concurrently, you can symlink the main build's obj dir into the worktree to share artifacts. This breaks the moment two worktrees try to build at once — only use it for solo iteration.
-
----
-
-## Widget + LLM Coexistence Pattern
-
-When building artifacts that show both a **data widget** (weather card, map, etc.) AND an **LLM text response**, follow this architecture:
-
-### Two parallel data paths
-
-1. **Widget path** (fast): query detection in `ai-chat-content` -> event to `AIChatContentParent` actor -> external API fetch -> IPC back to content -> artifact component renders
-2. **LLM path** (slow): `submitChatMessage` -> `generatePrompt` injects API context -> `Chat.fetchWithHistory` -> LLM streams text into same bubble
-
-### Critical implementation rules
-
-1. **Every `conversationState` entry MUST have `convId`** — `#checkConversationState()` compares convId of incoming messages against the last entry. Missing convId causes a full state reset, wiping all messages.
-
-2. **Merge standalone widget entries when LLM responds** — If you create a temporary assistant entry for widget data (before LLM responds), `handleAIResponseEvent` must find it, take the widget data, delete the standalone, and put the data on the real assistant entry.
-
-3. **Handle engine build failure gracefully** — Wrap `openAIEngine.build()` in a nested try-catch. If it fails, still create user message + assistant placeholder so widget detection fires. Re-throw for the outer catch.
-
-4. **Suppress errors only for engine failure, not LLM failure** — Track `engineBuildFailed` flag. Only suppress the error display when the engine specifically failed AND the widget provides the answer.
-
-5. **Clear loading state when widget data arrives standalone** — Set `assistantIsLoading = false` and `errorObj = null`.
-
-6. **Start API context fetch early** — Widget API calls don't depend on the engine. Start them before sequential engine-dependent context (realTimeInfo, memories) and await the result later.
-
-### File locations for widget features
-
-| Layer | File | Purpose |
-|-------|------|---------|
-| Widget component | `ui/components/<name>/<name>.mjs` | Lit component rendering the card |
-| Query detection | `ui/components/ai-chat-content/ai-chat-content.mjs` | Pattern matching, widget data binding |
-| Submission | `ui/components/ai-window/ai-window.mjs` | Query detection at submit time, engine failure handling |
-| API fetch (widget) | `ui/actors/AIChatContentParent.sys.mjs` | External API calls for widget data |
-| IPC routing | `ui/actors/AIChatContentChild.sys.mjs` | Message passing between processes |
-| LLM context | `ui/modules/ChatConversation.sys.mjs` | Inject API data into LLM prompt |
-| Actor registration | `browser/components/DesktopActorRegistry.sys.mjs` | Register new actor events |
-| Chrome manifest | `ui/jar.mn` | Register new component files |
-| HTML import | `ui/content/aiChatContent.html` | Script tag for new component |
 
 ---
 
 ## Rules
 
-- **Stay on your worktree branch.** If you are building in a worktree, all commits and file changes MUST stay on that worktree's branch. Never checkout, merge into, or commit to `main` (or the upstream default branch). Before committing, verify you are on the correct branch with `git branch --show-current`. If it returns `main`, STOP and ask the user — something is wrong.
-- **Follow existing patterns exactly.** Don't invent new architectural patterns. The distillate names the patterns; copy them.
-- **Trust the distillate.** Don't re-explore in pipeline mode. If the distillate is wrong or incomplete, fix the distillate (note in build report) — don't silently work around it.
-- **Use the design system tokens.** No raw hex for colors. No invented tokens. The design system doc is the contract.
-- **Minimal changes.** Touch only the files in the distillate's "Files You Will Touch" list. Don't refactor existing code.
-- **Every component needs all 4 states.** Loading, loaded, error, empty — per the design spec and the artifact state contract.
-- **Tool parameters must match the spec.** The PM spec defines the contract. Don't add or remove parameters.
-- **Test the build.** Never report success (or set `completed.build: true`) without running `./mach build faster` and confirming it passed.
-- **Use the golden profile pattern.** Don't write per-worktree `user.js` or copy auth files manually. The launcher (`launch-prototype.sh`) clones golden into `profile-default/` on first run. Never use `./mach run` (temp profile, loses prefs and auth).
-- **Honor reviewer findings.** If `spec-review.md` or `design-review.md` flagged BLOCKERs that the user waved through, note in your build report which ones you worked around vs which ones you treated as out-of-scope.
-- **Use the /firefox-desktop-frontend skill** for HTML/JS/CSS conventions if unsure about Firefox-specific patterns.
+- **Stay on your worktree branch.** Verify with `git branch --show-current`. If `main`, STOP and ask the user.
+- **Follow existing patterns.** Don't invent. The distillate names the patterns; copy them.
+- **Trust the distillate; surface gaps.** Don't silently re-explore. If wrong, write `distillate-gaps.md`.
+- **Use design system tokens.** No raw hex; no invented tokens. The design system doc is the contract.
+- **Minimal changes.** Touch only files in distillate's "Files You Will Touch" list.
+- **All 4 states per artifact** (loading, loaded, error, empty).
+- **Tool parameters match the spec.** Don't add or remove params.
+- **Test the build.** Never report success without `./mach build [faster]` actually passing.
+- **Use the golden profile.** Don't write per-worktree `user.js` or copy auth. The launcher clones golden. Never `./mach run`.
+- **Honor reviewer findings.** Note in the build report which BLOCKERs you worked around vs treated out-of-scope.
+- **Use `proto-status.sh`.** Never write `status.yaml` directly. Never set `completed.qa`.
+- **Live fix mode is one shot.** Edit, build, return verdict. Do not run QA. Do not update status. Do not explore unrelated code.
