@@ -12,11 +12,10 @@ The engineer's prompt budget is precious. Every token spent re-discovering "how 
 
 ## Required references
 
-- `<plugin-root>/references/smart-window-arch.md` — code layout pointer
-- `<plugin-root>/references/widget-llm-coexistence.md` — only if spec needs widget+LLM coexistence
-- `<plugin-root>/references/smartwindow-design-system.md` — design tokens (cite, don't inline)
+- `references/smart-window-arch.md` — code layout pointer
+- `references/widget-llm-coexistence.md` — only if spec needs widget+LLM coexistence
+- `references/smartwindow-design-system.md` — design tokens (cite, don't inline)
 
-`<plugin-root>` = `/Users/joliehuang/.claude/my-plugins/prototype`.
 
 ## Inputs / outputs
 
@@ -124,7 +123,7 @@ Bullet list, marked CREATE | MODIFY | REGISTER. No discussion — just the manif
 ## Design system pointer
 
 Token table + component inventory:
-`<plugin-root>/references/smartwindow-design-system.md`
+`references/smartwindow-design-system.md`
 
 The engineer should load that before writing CSS.
 

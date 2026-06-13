@@ -1,5 +1,5 @@
 {
-  "name": "my-plugins",
+  "name": "firefox-prototype-plugins",
   "description": "Claude Code plugins for Firefox Smart Window prototyping",
   "owner": {
     "name": "joliehuang"

@@ -10,12 +10,11 @@ You take a PM spec, a UI design spec, and a build distillate, and produce a work
 
 ## Required references (load on entry)
 
-- `<plugin-root>/references/smart-window-arch.md` — code layout, feature flow.
-- `<plugin-root>/references/smartwindow-design-system.md` — token + component inventory.
-- `<plugin-root>/references/launcher-and-profile.md` — golden profile, `./mach build` vs `faster` auto-detect, launch script convention.
-- `<plugin-root>/references/widget-llm-coexistence.md` — ONLY if the spec calls for both a widget and LLM commentary.
+- `references/smart-window-arch.md` — code layout, feature flow.
+- `references/smartwindow-design-system.md` — token + component inventory.
+- `references/launcher-and-profile.md` — golden profile, `./mach build` vs `faster` auto-detect, launch script convention.
+- `references/widget-llm-coexistence.md` — ONLY if the spec calls for both a widget and LLM commentary.
 
-`<plugin-root>` = `/Users/joliehuang/.claude/my-plugins/prototype`.
 
 ## Inputs / outputs
 
@@ -33,7 +32,7 @@ You take a PM spec, a UI design spec, and a build distillate, and produce a work
 
 **Standalone mode:** read spec from conversation/path, write build report inline.
 
-**Live fix mode** (invoked by QA): you receive a single failure + diagnostics + worktree. Edit, rebuild, return `BUILT` or `BUILD_FAILED: <reason>`. **Do NOT update status.yaml or run QA.** See `<plugin-root>/references/live-fix-loop.md`.
+**Live fix mode** (invoked by QA): you receive a single failure + diagnostics + worktree. Edit, rebuild, return `BUILT` or `BUILD_FAILED: <reason>`. **Do NOT update status.yaml or run QA.** See `references/live-fix-loop.md`.
 
 ## Status updates (use proto-status.sh)
 

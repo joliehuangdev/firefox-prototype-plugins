@@ -127,7 +127,7 @@ Reviewer prompt:
 
 Designer prompt:
 
-> Use the /prototype-design skill. `artifact_dir`: `<path>`. Read `spec.md`. Reference `<plugin-root>/references/smart-window-arch.md` and `<plugin-root>/references/smartwindow-design-system.md` before proposing tokens or layouts. Write `design.md` (and `design-figma.txt` if Figma MCP available). After writing, `proto-status.sh set "$artifact_dir" phase=design completed.design=true last_actor=prototype-design`.
+> Use the /prototype-design skill. `artifact_dir`: `<path>`. Read `spec.md`. Reference `references/smart-window-arch.md` and `references/smartwindow-design-system.md` before proposing tokens or layouts. Write `design.md` (and `design-figma.txt` if Figma MCP available). After writing, `proto-status.sh set "$artifact_dir" phase=design completed.design=true last_actor=prototype-design`.
 
 Distill prompt:
 
@@ -139,7 +139,6 @@ After all three complete, **read `spec-review.md`** from disk:
 - PASS WITH FIXES → show major findings, proceed.
 - PASS / informational-only → proceed silently.
 
-For `<plugin-root>` substitute `/Users/joliehuang/.claude/my-plugins/prototype`.
 
 ---
 
@@ -169,7 +168,7 @@ Agent(general-purpose, "Prototype build", isolation: "worktree")
 
 Prompt:
 
-> Use the /prototype-build skill. `artifact_dir`: `<path>`. Read `spec.md`, `design.md` (if exists), `distillate.md`, `spec-review.md` and `design-review.md` (if exist). Reference `<plugin-root>/references/smart-window-arch.md`, `smartwindow-design-system.md`, `launcher-and-profile.md`. Build the prototype.
+> Use the /prototype-build skill. `artifact_dir`: `<path>`. Read `spec.md`, `design.md` (if exists), `distillate.md`, `spec-review.md` and `design-review.md` (if exist). Reference `references/smart-window-arch.md`, `smartwindow-design-system.md`, `launcher-and-profile.md`. Build the prototype.
 >
 > Cycle number: read with `proto-status.sh get "$artifact_dir" cycles.build` (your output goes to `reports/build-cycle-<N+1>.md`; also write `reports/build-latest.md` as a copy or symlink).
 >
@@ -203,13 +202,13 @@ Agent(general-purpose, "Prototype QA")
 
 Prompt:
 
-> Use the /prototype-qa skill. `artifact_dir`: `<path>`. Read `spec.md`, `design.md` (if exists), `worktree-info.txt`, `reports/build-latest.md`. Reference `<plugin-root>/references/launcher-and-profile.md`.
+> Use the /prototype-qa skill. `artifact_dir`: `<path>`. Read `spec.md`, `design.md` (if exists), `worktree-info.txt`, `reports/build-latest.md`. Reference `references/launcher-and-profile.md`.
 >
 > Cycle number: read with `proto-status.sh get "$artifact_dir" cycles.qa_runs` then increment. Write to `reports/qa-cycle-<N+1>.md` (also `reports/qa-latest.md`).
 >
 > Save screenshots to `screenshots/cycle-<N+1>-<test-name>.png`. **Classify each failure** as `spec | design | build | infra`.
 >
-> **If failures are exclusively `build`-class AND `cycles.build < caps.build`**, you MAY enter the live fix loop per `<plugin-root>/references/live-fix-loop.md`. Otherwise write the report and exit; the coordinator will route.
+> **If failures are exclusively `build`-class AND `cycles.build < caps.build`**, you MAY enter the live fix loop per `references/live-fix-loop.md`. Otherwise write the report and exit; the coordinator will route.
 >
 > Update status.yaml with the appropriate cycle counters via `proto-status.sh`. **Do NOT set `completed.qa: true`** — the coordinator owns that flag.
 

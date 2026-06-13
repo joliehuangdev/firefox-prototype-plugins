@@ -10,10 +10,9 @@ You produce UI specs and visual designs for Firefox Smart Window prototypes. You
 
 ## Required references
 
-- `<plugin-root>/references/smart-window-arch.md` — Smart Window architecture, width constraints, Lit/shadow DOM.
-- `<plugin-root>/references/smartwindow-design-system.md` — **token + component inventory (153 tokens in active use)**. Do NOT invent tokens or layout patterns that contradict this doc. When you need something it doesn't cover, flag the deviation in `design.md`.
+- `references/smart-window-arch.md` — Smart Window architecture, width constraints, Lit/shadow DOM.
+- `references/smartwindow-design-system.md` — **token + component inventory (153 tokens in active use)**. Do NOT invent tokens or layout patterns that contradict this doc. When you need something it doesn't cover, flag the deviation in `design.md`.
 
-`<plugin-root>` = `/Users/joliehuang/.claude/my-plugins/prototype`.
 
 ## Inputs / outputs
 
@@ -41,7 +40,7 @@ Identify: artifact components to design, states (loading/loaded/error/empty), in
 
 ### Step 2 — Consult the design system
 
-Load `<plugin-root>/references/smartwindow-design-system.md`. From it, identify:
+Load `references/smartwindow-design-system.md`. From it, identify:
 
 - The most-similar existing artifact in the inventory (weather-artifact, trip-artifact, etc.) — read its `.mjs` and `.css` for the canonical pattern.
 - Tokens you'll cite (color, spacing, type, radii).

@@ -10,12 +10,11 @@ You autonomously validate Firefox Smart Window prototypes by launching Firefox, 
 
 ## Required references (load on entry)
 
-- `<plugin-root>/references/launcher-and-profile.md` — golden profile, Marionette pref injection, port handling, `./mach build` rules. **Single source of truth — do NOT inline this content here.**
-- `<plugin-root>/references/smart-window-arch.md` — Smartbar/chat/artifacts concepts.
-- `<plugin-root>/references/live-fix-loop.md` — the in-place build-fix protocol.
-- `<plugin-root>/references/widget-llm-coexistence.md` — convId/engine-failure invariants used in diagnosis.
+- `references/launcher-and-profile.md` — golden profile, Marionette pref injection, port handling, `./mach build` rules. **Single source of truth — do NOT inline this content here.**
+- `references/smart-window-arch.md` — Smartbar/chat/artifacts concepts.
+- `references/live-fix-loop.md` — the in-place build-fix protocol.
+- `references/widget-llm-coexistence.md` — convId/engine-failure invariants used in diagnosis.
 
-`<plugin-root>` = `/Users/joliehuang/.claude/my-plugins/prototype`.
 
 ## Inputs / outputs
 
@@ -147,7 +146,7 @@ After fix, increment `cycles.infra` and re-test the failing case.
 
 **Entry condition:** ALL failing tests are classified `build` AND `cycles.build < caps.build` (read both via `proto-status.sh get`).
 
-Follow `<plugin-root>/references/live-fix-loop.md`. Summary:
+Follow `references/live-fix-loop.md`. Summary:
 
 1. Capture diagnostics bundle for each `build` failure: console (last 20), failed network requests, screenshot path, element outerHTML if reachable.
 2. For each failure (max 2 attempts), dispatch a "live-fix" engineer subagent:
@@ -169,7 +168,7 @@ Follow `<plugin-root>/references/live-fix-loop.md`. Summary:
    >   Screenshot: `<abs path>`
    >   Element outerHTML: `<embed if available>`
    >
-   > Read only the file(s) directly implicated. Edit. Rebuild per `<plugin-root>/references/launcher-and-profile.md` (auto-detect: full `./mach build` if moz.build/jar.mn touched or new files added; else `./mach build faster`). Return ONE line:
+   > Read only the file(s) directly implicated. Edit. Rebuild per `references/launcher-and-profile.md` (auto-detect: full `./mach build` if moz.build/jar.mn touched or new files added; else `./mach build faster`). Return ONE line:
    >
    >   `BUILT`
    >   `BUILD_FAILED: <reason>`

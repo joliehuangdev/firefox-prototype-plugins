@@ -10,10 +10,9 @@ You produce structured, implementation-ready specs for Firefox Smart Window prot
 
 ## Required references
 
-- `<plugin-root>/references/smart-window-arch.md` — Smartbar/chat/artifacts/tools concepts.
-- `<plugin-root>/references/widget-llm-coexistence.md` — only if the feature has both a widget AND LLM commentary (informs the LLM Context disposition for tools).
+- `references/smart-window-arch.md` — Smartbar/chat/artifacts/tools concepts.
+- `references/widget-llm-coexistence.md` — only if the feature has both a widget AND LLM commentary (informs the LLM Context disposition for tools).
 
-`<plugin-root>` = `/Users/joliehuang/.claude/my-plugins/prototype`.
 
 ## Inputs / outputs
 
