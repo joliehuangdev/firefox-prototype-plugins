@@ -14,16 +14,18 @@ Start with `/prototype` and co-create the squad agents to 10x your prototyping v
 | `prototype-distill` | `/prototype-distill` | Distillator | Compresses relevant Firefox codebase context into a focused `distillate.md` for the engineer |
 | `prototype-build` | `/prototype-build` | Engineer Agent | Builds the prototype in an isolated worktree following existing codebase patterns |
 | `prototype-qa` | `/prototype-qa` | QA Agent | Validates via Marionette with screenshots; classifies failures by layer for triaged retries |
+| `brainstorm` | `/brainstorm` | Ideation | Anti-bias domain-shift ideation for new features. Standalone — the coordinator does brainstorm inline, so this is for exploring a problem space on its own |
+| `qa-extension` | `/qa-extension` | Extension QA | Standalone utility to test, debug, and fix Firefox browser extensions — independent of the prototype pipeline |
 
 ## Pipeline
 
 ```text
-Idea -> Spec -> [Review + Design in parallel] -> Design Review -> Distill -> Build -> QA
-                       ^                                                              |
-                       +-- classified retry loop (spec / design / build / infra) -----+
+Idea -> Spec -> [Spec review + Design + Distill in parallel] -> Design review -> Build -> QA
+                       ^                                                            |
+                       +-- classified retry loop (spec / design / build) -----------+
 ```
 
-The coordinator asks a single sizing question up front (tweak / new widget / new feature) and adapts the pipeline accordingly — small changes skip review and distill; new features run the full chain. QA failures are routed back to the responsible agent with per-layer retry caps.
+The coordinator asks a single sizing question up front (tweak / new widget / new feature) and adapts the pipeline accordingly — a tweak skips review and design and runs a quick distill; new features run the full chain, with brainstorm handled inline in the coordinator. After the spec, spec review, design, and distill fan out in parallel. QA failures are classified (`spec | design | build | infra`) and routed back to the responsible agent with per-layer retry caps (`infra` is self-fixed by QA rather than re-spawned).
 
 All artifacts live in `~/FirefoxPrototype/_prototype/<slug>/` so any run can be resumed with `/prototype resume`.
 
@@ -38,6 +40,8 @@ claude plugin install prototype-design@firefox-prototype-plugins
 claude plugin install prototype-distill@firefox-prototype-plugins
 claude plugin install prototype-build@firefox-prototype-plugins
 claude plugin install prototype-qa@firefox-prototype-plugins
+claude plugin install brainstorm@firefox-prototype-plugins
+claude plugin install qa-extension@firefox-prototype-plugins
 ```
 
 ## Usage
