@@ -1,7 +1,7 @@
 ---
 name: prototype-build
 description: Engineer agent that builds Firefox Smart Window prototypes from a spec and design. Use when the user says "build the prototype", "implement the feature", or when invoked by the /prototype coordinator. Can also be used standalone to build from a spec.
-version: 3.0.0
+version: 3.0.1
 ---
 
 # Prototype Build — Engineer

@@ -1,7 +1,7 @@
 {
   "name": "prototype-build",
   "description": "Engineer agent that builds Firefox Smart Window prototypes from a spec and design.",
-  "version": "2.0.0",
+  "version": "3.0.1",
   "author": {"name": "joliehuangdev"},
   "license": "MIT",
   "keywords": ["firefox", "smart-window", "prototyping", "engineering", "build"]

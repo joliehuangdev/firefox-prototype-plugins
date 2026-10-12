@@ -1,7 +1,7 @@
 ---
 name: prototype-qa
 description: QA agent that validates Firefox Smart Window prototypes end-to-end via Marionette. Use when the user says "qa the prototype", "test the prototype", "validate the build", or when invoked by the /prototype coordinator. Can also be used standalone.
-version: 3.0.0
+version: 3.0.1
 ---
 
 # Prototype QA
@@ -168,7 +168,7 @@ Follow `references/live-fix-loop.md`. Summary:
    >   Screenshot: `<abs path>`
    >   Element outerHTML: `<embed if available>`
    >
-   > Read only the file(s) directly implicated. Edit. Rebuild per `references/launcher-and-profile.md` (auto-detect: full `./mach build` if moz.build/jar.mn touched or new files added; else `./mach build faster`). Return ONE line:
+   > Read only the file(s) directly implicated. Edit. Rebuild (auto-detect: full `./mach build` if moz.build/jar.mn touched or new files added; else `./mach build faster`). Return ONE line:
    >
    >   `BUILT`
    >   `BUILD_FAILED: <reason>`

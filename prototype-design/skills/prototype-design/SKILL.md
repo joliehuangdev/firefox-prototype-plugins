@@ -1,7 +1,7 @@
 ---
 name: prototype-design
 description: UX Designer agent that generates UI specs and Figma designs for Firefox Smart Window prototypes. Use when the user says "design the prototype", "UI spec", or when invoked by the /prototype coordinator. Can also be used standalone for design exploration.
-version: 3.0.0
+version: 3.0.1
 ---
 
 # Prototype Design — UX Designer

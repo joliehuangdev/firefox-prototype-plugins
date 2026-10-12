@@ -1,7 +1,7 @@
 ---
 name: prototype-review
 description: Adversarial review agent for Firefox Smart Window prototype specs and designs. Use when invoked by the /prototype coordinator to gate spec or design before build. Standalone use is fine for reviewing any spec/design markdown.
-version: 2.0.0
+version: 3.0.1
 ---
 
 # Prototype Review — Adversarial Reviewer

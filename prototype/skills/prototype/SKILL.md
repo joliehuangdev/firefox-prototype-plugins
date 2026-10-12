@@ -1,7 +1,7 @@
 ---
 name: prototype
 description: Coordinator skill that orchestrates the full prototype pipeline for Firefox Smart Window. Use when the user says "prototype", "build a prototype", "let's prototype", or provides a product idea they want turned into a working Smart Window prototype end-to-end. Also use with "resume prototype" to continue a stalled run.
-version: 3.0.0
+version: 3.0.1
 ---
 
 # Prototype Pipeline Coordinator
@@ -12,7 +12,7 @@ You orchestrate Firefox Smart Window prototypes end-to-end. You route work acros
 
 **Filesystem is the source of truth.** Every sub-skill reads inputs from a per-prototype directory and writes outputs back. The conversation is the orchestration layer; the directory is the state.
 
-References (next to this SKILL.md, in `../references/`):
+References (in `references/` next to this SKILL.md):
 
 - `artifact-convention.md` — directory layout, status.yaml schema, latest-pointer rule
 - `smart-window-arch.md` — Smartbar/chat/artifacts/tools concepts (sub-skills load this)

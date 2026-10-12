@@ -1,7 +1,7 @@
 ---
 name: prototype-distill
 description: Compresses relevant Firefox Smart Window codebase context into a focused build reference. Use when invoked by /prototype before the engineer agent runs, or when re-running to fill gaps the engineer surfaced.
-version: 2.0.0
+version: 3.0.1
 ---
 
 # Prototype Distill — Build Context Compressor
