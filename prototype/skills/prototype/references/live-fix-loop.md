@@ -53,7 +53,7 @@ Phase 4.live (QA) — Live Fix Loop
 
 If the live loop exhausts its attempts without fixing all `build` failures:
 
-- Write `qa-report-<N>.md` covering remaining failures with classification still as `build`, plus the diagnostics that were collected.
+- Write `reports/qa-cycle-<N>.md` (and `cp` to `reports/qa-latest.md`) covering remaining failures with classification still as `build`, plus the diagnostics that were collected.
 - Exit. Coordinator routes to a fresh `prototype-build` engineer for the harder fix (with full context, distillate gap check, etc.).
 
 ## Why this is safer than collapsing build+QA into one role

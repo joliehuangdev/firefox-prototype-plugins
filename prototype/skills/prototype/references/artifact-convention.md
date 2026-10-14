@@ -11,7 +11,11 @@ This makes the pipeline **resumable** (a stalled prototype 3 days later picks up
 ```
 ~/FirefoxPrototype/_prototype/<YYYY-MM-DD>-<feature-slug>/
 ├── status.yaml                  # phase, scope, cycle counts, blockers
-├── idea.md                      # raw user idea (verbatim, never edited; brainstorm notes appended for new-feature)
+├── idea.md                      # raw user idea (verbatim; scoping notes appended for new-feature)
+├── demo.md                      # the 2-3 demo prompts from intake — QA's bar
+├── brief-source.txt             # optional: path/URL of an existing brief (spec condenses it)
+├── design-figma-source.txt      # optional: user's Figma URL (design transcribes it)
+├── risk-probe.md                # new-feature with external dependency: GO / NO-GO before spec
 ├── spec.md                      # PM output
 ├── spec-review.md               # adversarial review of spec
 ├── design.md                    # UX output (UI spec)
@@ -31,7 +35,8 @@ This makes the pipeline **resumable** (a stalled prototype 3 days later picks up
 │   ├── cycle-1-test-1.png
 │   └── ...
 ├── launch.sh                    # generated launcher (chmod +x)
-└── worktree-info.txt            # worktree path + branch (extracted from build agent)
+├── README.md                    # handover copied from <worktree>/README.md at finish
+└── worktree-info.txt            # worktree path + branch (written by the coordinator at init)
 ```
 
 The slug is `kebab-case` derived from the feature name. The date prefix sorts chronologically.
@@ -81,7 +86,8 @@ completed:
   design_review: false
   distill: false
   build: false
-  qa: false           # ONLY the coordinator sets this true (after triage)
+  demo: false         # coordinator only: every demo.md prompt passed live
+  qa: false           # coordinator only, after triage
 
 # cycle counters — sub-skills increment their own
 cycles:
@@ -90,7 +96,7 @@ cycles:
   build: 0
   infra: 0
   distill: 0
-  qa_runs: 0          # total QA runs (used for cycle-N report numbering)
+  qa_runs: 0          # total QA runs (cycle-N report numbering)
 
 # caps — coordinator enforces; user can raise via prompt
 caps:
@@ -99,11 +105,15 @@ caps:
   build: 3
   infra: 0            # 0 = unlimited
   distill: 1
+  demo_fix_rounds: 2  # live-fix rounds QA may spend on a failing demo prompt
 
-# worktree (set by build phase)
+# set at init by the coordinator (worktree is created before spec so its build overlaps planning)
+project_root: /Users/.../FirefoxPrototype
+time_budget_min: 90
 worktree:
   path: /Users/.../FirefoxPrototype/worktrees/feature-xyz
-  branch: prototype/feature-xyz
+  branch: feature-xyz
+  base: ai/main
 
 # human-readable blocker if phase=blocked
 blocked_on: null
@@ -119,7 +129,7 @@ last_actor: prototype-build
 - **`completed.qa: true`** is exclusively the coordinator's flag — set only after triaging the latest QA report shows all PASS.
 - **`updated`** is auto-stamped by `proto-status.sh set` (don't pass it explicitly unless overriding).
 
-Use `proto-status.sh` (at `/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh`). Sub-skills should not parse or write YAML by hand.
+Use `proto-status.sh` (`<project_root>/bin/proto-status.sh`; a copy ships in the coordinator's `scripts/`). Commands: `init`, `set`, `get`, `check-cap <layer>`, `note "<text>"`. Sub-skills should not parse or write YAML by hand.
 
 ---
 

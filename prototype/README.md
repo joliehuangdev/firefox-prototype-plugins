@@ -1,73 +1,24 @@
 # prototype
 
-Coordinator that orchestrates the full prototype pipeline for Firefox Smart Window features.
+Coordinator for the Firefox Smart Window prototype pipeline.
 
-## What it does
+## Flow
 
-Routes a product idea through six specialized agents, adapting pipeline depth to the scope of the work and persisting every artifact to disk so a run can be resumed at any phase.
+1. **Intake**, one question at a time: scope (tweak / new widget / new feature), the 2–3 demo prompts, existing inputs (brief, Figma, branch), setup needs (where keys live), time budget.
+2. **Init**: artifact dir `<project_root>/_prototype/<date>-<slug>/`, worktree via `bin/new-prototype.sh <slug> [base]`, first `./mach build` in the background.
+3. **Tweak**: the coordinator edits, builds, smokes and finishes itself. No agents.
+4. **Risk probe** (new feature with an external dependency): one 45-min agent tries the riskiest thing on the existing build. NO-GO stops the run.
+5. **Spec** → **spec review ‖ design ‖ distill** → **design review**, each with a size limit; one trim request max.
+6. **Build**: one engineer in the worktree; kept alive and messaged for fixes.
+7. **QA**: smoke, then every demo prompt live, then ≤5 more. Live fix loop for `build` failures, capped per demo prompt.
+8. **Triage** by class with caps, re-test only failures, then **handover**: README in the worktree, run command, offer to push the branch and `/push-to-demo`.
 
-| Agent | Skill | Role |
-| --- | --- | --- |
-| PM | `/prototype-spec` | Generates a structured spec |
-| Reviewer | `/prototype-review` | Adversarial review of spec and design (forces findings) |
-| UX Designer | `/prototype-design` | UI spec and optional Figma mockups |
-| Distillator | `/prototype-distill` | Compresses Firefox codebase context into a single build reference |
-| Engineer | `/prototype-build` | Builds the prototype in an isolated worktree |
-| QA | `/prototype-qa` | Validates via Marionette, classifies failures by layer |
+After every phase: `[phase] 9 min · 147k tokens · total 23/90 min`. At the budget, it stops and asks.
 
-## Usage
+## State
 
-```text
-/prototype [your product idea]
-```
+`status.yaml` is mutated only through `proto-status.sh` (`init`, `set`, `get`, `check-cap <layer>`, `note`). The coordinator owns `phase`, `completed.*` (including `completed.demo`), `caps.*`; sub-skills set their own `cycles.*` and `last_actor`. See `skills/prototype/references/artifact-convention.md`.
 
-Resume a stalled run:
+## Resume
 
-```text
-/prototype resume
-```
-
-The coordinator lists prior runs in `~/FirefoxPrototype/_prototype/`, picks up at the recorded phase, and continues.
-
-## Pipeline by scope
-
-The first thing the coordinator asks is a sizing question — tweak, new widget, or new feature — and adapts the pipeline accordingly:
-
-| Scope | Brainstorm | Spec | Spec review | Design | Design review | Distill | Build | QA |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tweak | – | quick | – | – | – | quick | yes | yes |
-| new-widget | – | full | informational | full | yes | yes | yes | yes |
-| new-feature | inline | full | yes | full | yes | yes | yes | yes |
-
-For new-feature, brainstorm is done **inline in the coordinator** (2–3 sharpening questions captured into `idea.md`), not a separate agent — and is skipped entirely when the idea already arrives as a complete brief. For new-widget, spec review is **informational** (findings are surfaced but don't gate the build).
-
-## Pipeline flow (new-widget / new-feature)
-
-```text
-Idea -> Spec -> [Spec review + Design + Distill in parallel] -> Design review -> Build -> QA
-                       ^                                                            |
-                       +-- failure-classified retry loop (spec / design / build) ---+
-```
-
-After the spec is written, spec review, design, and distill all fan out in parallel — distill only needs the spec, so it runs alongside design instead of waiting. QA failures are classified as `spec | design | build | infra` and routed back to the responsible agent, with per-layer retry caps (spec: 1, design: 2, build: 3, infra: unlimited; `infra` is self-fixed by QA, not re-spawned).
-
-Two build-time loops keep cycles cheap: if the engineer reports **distillate gaps** (a missing pattern that broke the build), distill is re-run to patch `distillate.md` before another build attempt; and QA may enter an in-place **live-fix loop** when failures are exclusively `build`-class and the build budget remains.
-
-## State and resumability
-
-Every run writes to `~/FirefoxPrototype/_prototype/<YYYY-MM-DD>-<slug>/`:
-
-- `idea.md` — the user's verbatim idea (audit record)
-- `spec.md`, `design.md`, `distillate.md`
-- `reports/` — `build-cycle-N.md`, `qa-cycle-N.md`, plus `build-latest.md` / `qa-latest.md` pointers
-- `screenshots/` — QA evidence (`cycle-N-<test>.png`)
-- `status.yaml` — current phase, completion flags, cycle counts, worktree path/branch; mutated **only** via the shared `bin/proto-status.sh` helper, never by hand
-- `launch.sh` — generated by the engineer to run the built prototype
-
-Sub-skills read inputs and write outputs from this directory. The conversation is just the orchestration layer. The coordinator owns `phase` and `completed.*` transitions; sub-skills set only their own cycle counters and `last_actor`.
-
-## Requirements
-
-- Local Firefox build at `~/FirefoxPrototype/firefox/` (see [setup docs](https://firefox-source-docs.mozilla.org/setup/index.html))
-- Marionette-capable Firefox build (for QA)
-- Figma MCP server (optional, for design mockups)
+`/prototype resume` lists `_prototype/` by recency, reads `status.yaml`, and continues from `phase`.

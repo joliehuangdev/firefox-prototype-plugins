@@ -40,7 +40,7 @@ Firefox's AI-powered window — a separate window type, ~400px wide. It hosts a 
 
 ## Default checkout
 
-`/Users/joliehuang/FirefoxPrototype/firefox/`
+The **prototype worktree** recorded in `status.yaml` (`worktree.path`), e.g. `<project_root>/worktrees/<feature>/`. Worktrees branch from `ai/main` by default (or a branch the user names), which can differ from the main checkout at `<project_root>/firefox/`; read code where you will build.
 
 If a different layout is in use, the user will say so in `idea.md` or via Step 1 of the coordinator.
 

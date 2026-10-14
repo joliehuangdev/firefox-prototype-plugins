@@ -1,5 +1,7 @@
 # Smart Window Design System
 
+**Snapshot, not live truth.** Sourced from `browser/components/aiwindow/ui/components/` on a prototype branch in spring 2026. `weather-artifact` and `trip-artifact`, used below as examples, are prototype-branch components and are **not** on `main` or `ai/main`; treat them as pattern illustrations and confirm any token or component against the worktree before citing it to the engineer.
+
 Sourced from `browser/components/aiwindow/ui/components/` in the FirefoxPrototype mozilla-central checkout. This is the **build-time reference** — the implementation truth that backs the design language. For visual exploration, use Figma MCP.
 
 **Rule of thumb:** if a token, component, or pattern below exists, reuse it. Don't invent new tokens, don't fork patterns, and don't reach for raw hex/px when a token covers the case.

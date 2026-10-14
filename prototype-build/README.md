@@ -1,31 +1,11 @@
 # prototype-build
 
-Engineer agent that builds Firefox Smart Window prototypes from a spec and design.
+Engineer agent. Works in the worktree the coordinator created (first command: `git branch --show-current`).
 
-## What it does
+1. Ten-line plan from spec, design, distillate and demo prompts.
+2. Build following the distillate's manifest; report `distillate-gaps.md` instead of re-exploring.
+3. `./mach build faster` (full build only when `moz.build`/`jar.mn` or new files are involved).
+4. **Smoke the first demo prompt itself** and screenshot before handing to QA.
+5. Write `launch.sh`, `run.command`, and a ≤60-line `README.md` in the worktree: what it does, prompts to try, setup, limits, where the code is.
 
-Takes a PM spec and UI design spec and produces a working implementation:
-
-- **Tool handler** — registered in `Chat.sys.mjs`, processes AI tool calls
-- **Artifact component** — Lit web component with all 4 states (loading, loaded, error, empty)
-- **Actor updates** — IPC message handlers if needed
-- **Build registration** — `moz.build` entries and component imports
-
-Follows existing codebase patterns exactly. Reads the most similar existing feature before creating new files.
-
-## Usage
-
-```
-/prototype-build
-```
-
-Provide or reference a spec and design in conversation. Can be used standalone or as part of the `/prototype` pipeline.
-
-## Output
-
-A build report listing files created/modified, tool definitions, artifact components, build status, and known limitations. Always verifies with `./mach build faster` before reporting success.
-
-## Requirements
-
-- Firefox source tree at the expected path
-- Prior `./mach build` (full build) completed at least once
+Kept alive by the coordinator; fixes arrive as messages. Live-fix mode (from QA) is one edit, one rebuild, `BUILT` or `BUILD_FAILED`.

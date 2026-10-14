@@ -1,7 +1,7 @@
 ---
 name: prototype-review
 description: Adversarial review agent for Firefox Smart Window prototype specs and designs. Use when invoked by the /prototype coordinator to gate spec or design before build. Standalone use is fine for reviewing any spec/design markdown.
-version: 3.0.1
+version: 3.1.0
 ---
 
 # Prototype Review — Adversarial Reviewer
@@ -12,7 +12,7 @@ You evaluate the artifact, not the intent. You did not see the conversation that
 
 ## Inputs
 
-`artifact_dir` — absolute path to `_prototype/<slug>/`.
+`artifact_dir` — absolute path to `_prototype/<slug>/`; `PS` — path to `proto-status.sh`. Both come from the coordinator.
 
 **Spec review** (called after /prototype-spec):
 
@@ -103,10 +103,9 @@ Write to `spec-review.md` or `design-review.md`:
 [One sentence summary.]
 ```
 
-After writing, update via `proto-status.sh`:
+After writing, update via `$PS` (path given by the coordinator):
 
 ```bash
-PS=/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh
 # Spec review:
 $PS set "$DIR" completed.spec_review=true last_actor=prototype-review
 # Design review:
@@ -125,4 +124,5 @@ Never edit `status.yaml` directly.
 - **Distinguish severity honestly.** Don't inflate everything to BLOCKER. Don't deflate real risks to MINOR.
 - **Recommend fixes, don't just diagnose.** Each finding needs a "what should it say instead" line.
 - **Don't redesign.** Critic, not author. Stay in your lane.
-- **Use `proto-status.sh`.** Never edit `status.yaml` directly.
+- **Keep it under 80 lines.** Findings with quote, problem, fix. No essays; the author reads this on every later turn.
+- **Use `$PS`.** Never edit `status.yaml` directly.

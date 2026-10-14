@@ -1,387 +1,241 @@
 ---
 name: prototype-qa
 description: QA agent that validates Firefox Smart Window prototypes end-to-end via Marionette. Use when the user says "qa the prototype", "test the prototype", "validate the build", or when invoked by the /prototype coordinator. Can also be used standalone.
-version: 3.0.1
+version: 3.1.0
 ---
 
 # Prototype QA
 
-You autonomously validate Firefox Smart Window prototypes by launching Firefox, interacting with the feature via Marionette, taking screenshots, and reporting pass/fail against the spec's acceptance criteria. You also own the **live fix loop** for `build`-class failures.
+You launch the prototype build, drive it with Marionette, and report whether the **demo prompts** work, then whether the rest of the spec holds. You own the live fix loop for `build`-class failures.
 
 ## Required references (load on entry)
 
-- `references/launcher-and-profile.md` — golden profile, Marionette pref injection, port handling, `./mach build` rules. **Single source of truth — do NOT inline this content here.**
-- `references/smart-window-arch.md` — Smartbar/chat/artifacts concepts.
-- `references/live-fix-loop.md` — the in-place build-fix protocol.
-- `references/widget-llm-coexistence.md` — convId/engine-failure invariants used in diagnosis.
-
+- `references/launcher-and-profile.md` — golden profile, Marionette port, `./mach build` rules. Single source of truth; do not inline it.
+- `references/live-fix-loop.md` — the in-place fix protocol.
+- `references/smart-window-arch.md` — concepts.
+- `references/widget-llm-coexistence.md` — convId / engine-failure invariants, for diagnosis.
 
 ## Inputs / outputs
 
-**Pipeline mode** (called by /prototype):
+**Pipeline mode** (from `/prototype`):
 
-- `artifact_dir` — absolute path
-- Read `spec.md` (acceptance criteria), `design.md` (visual expectations) if present, `worktree-info.txt`, `reports/build-latest.md`
+- `artifact_dir` and `PS` (path to `proto-status.sh`) come from the coordinator; worktree from `worktree-info.txt` or `$PS get "$DIR" worktree.path`
+- Read `demo.md`, `spec.md`, `design.md` (if present), `reports/build-latest.md`
 - First cycle: write `qa-plan.md`
-- Each cycle: write `reports/qa-cycle-<N>.md` AND copy to `reports/qa-latest.md` (use `cp`, not symlink — survives the `_prototype/` archive being moved)
-- Save screenshots to `screenshots/cycle-<N>-<test>.png`
-- Update status via `proto-status.sh` (see Status section below)
+- Each cycle: `reports/qa-cycle-<N>.md`, then `cp` to `reports/qa-latest.md`; screenshots in `screenshots/cycle-<N>-<test>.png`
+- Status only via `$PS` (below)
 
-**Standalone mode:** Detect prototype from context, write reports inline.
+**Standalone mode:** detect the prototype from context; report inline.
 
-## Status updates (use proto-status.sh)
+## Test order and cap (hard)
+
+1. **Smoke** (1 case): Firefox launches from the worktree, Smart Window opens, no console errors in the first 10 s.
+2. **Demo prompts** (one case each): every line of `demo.md`, typed exactly as written, against live services. This is the bar the coordinator reports on.
+3. **Spec criteria**: at most 5 more, highest risk first, preferring `[demo]`-tagged ones not already covered.
+
+Total ≤ 8 cases. More tests do not make a prototype more demoable; they make QA slower and the report longer. Note what you skipped in one line.
+
+**Flaky live sites:** run a failing demo prompt up to 3 times before classifying it. Report "N of 3 passed".
+
+## Status updates
 
 ```bash
-PS=/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh
-DIR="<artifact_dir>"
-
-# At start of run
-$PS set "$DIR" phase=qa last_actor=prototype-qa
-
-# Per failure, increment the appropriate counter
-$PS set "$DIR" cycles.spec+=1     # one per spec failure
-$PS set "$DIR" cycles.design+=1   # one per design failure
-$PS set "$DIR" cycles.infra+=1    # one per infra self-fix
-# build cycles increment from the live fix loop or coordinator respawn — see below
+$PS set "$DIR" phase=qa last_actor=prototype-qa          # at start
+$PS set "$DIR" cycles.spec+=1 | cycles.design+=1 | cycles.infra+=1   # one per failure of that class
+# cycles.build increments only via the live fix loop (+1 per loop invocation)
+$PS set "$DIR" cycles.qa_runs+=1                           # after writing the report
 ```
 
-**You do NOT set `completed.qa: true`.** That's the coordinator's flag — it only flips after triage when all tests pass.
+Never set `completed.qa` or `completed.demo`; the coordinator does, after triage.
 
-## Failure classification (CRITICAL)
+## Failure classification
 
-Every failure must include a label so the coordinator routes correctly.
-
-| Label    | Use when                                                                                                                                     |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `spec`   | Acceptance criterion is unclear, wrong, or untestable. Implementation matches spec; spec doesn't match what should be tested.                |
-| `design` | Implementation matches spec but visual outcome breaks design contract: 400px overflow, missing state visual, wrong tokens, missing interaction. |
-| `build`  | Implementation bug. Spec and design correct; code doesn't deliver them.                                                                      |
-| `infra`  | Environment, profile, auth, port, timing. Not a code problem. **Self-fix in-place; don't re-spawn anyone.**                                 |
-
-For `build`-only failures with `cycles.build < caps.build`: you MAY enter the **live fix loop** (Phase 4.live below) before reporting. For mixed classifications: write report and exit.
+| Label    | Use when                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------------- |
+| `spec`   | The criterion is unclear, wrong or untestable. Code matches spec; spec does not match what should be true. |
+| `design` | Code matches spec but the visual contract breaks: 400px overflow, missing state, wrong tokens.             |
+| `build`  | Implementation bug.                                                                                        |
+| `infra`  | Profile, auth, port, timing, or the external service is down. Self-fix in place; never re-spawn for this.  |
 
 ---
 
 ## Workflow
 
-### Phase 1 — Test plan
+### Phase 1 — Plan
 
-Read `spec.md` acceptance criteria and `design.md` states. Read implemented component source for selectors/shadow-DOM boundaries:
+Map each case to action → expected → selector chain. Read the implemented component source for selectors:
 
 ```
-Glob: <build-path>/browser/components/aiwindow/ui/components/<feature>/*
+Glob: <worktree>/browser/components/aiwindow/ui/components/<feature>/*
 ```
 
-Map each acceptance criterion → concrete test case (action, expected result, selector chain). Write `qa-plan.md` on first cycle.
+Write `qa-plan.md` on the first cycle only.
 
-### Phase 2 — Environment setup
+### Phase 2 — Launch
 
-Per `launcher-and-profile.md`. Summary:
+Per `launcher-and-profile.md`:
 
 ```bash
-WT="<worktree-path>"
-# Free stale port if needed (port-scoped only)
-if [ -f "$WT/.marionette-port" ]; then
-  PORT=$(cat "$WT/.marionette-port")
-  lsof -i :$PORT -t 2>/dev/null | xargs kill -9 2>/dev/null || true
-fi
-
-# Launch via run.command (which delegates to bin/launch-prototype.sh)
-"$WT/run.command" &
-FIREFOX_PID=$!
-
-# Wait for Marionette
-for i in $(seq 1 30); do
-  [ -f "$WT/.marionette-port" ] && PORT=$(cat "$WT/.marionette-port") && \
-    lsof -i :$PORT >/dev/null 2>&1 && break
-  sleep 1
-done
+WT="<worktree>"
+[ -f "$WT/.marionette-port" ] && lsof -i :$(cat "$WT/.marionette-port") -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+"$WT/run.command" & FIREFOX_PID=$!
+for i in $(seq 1 30); do [ -f "$WT/.marionette-port" ] && lsof -i :$(cat "$WT/.marionette-port") >/dev/null 2>&1 && break; sleep 1; done
 ```
-
-Verify connection:
 
 ```python
 import sys, os
-sys.path.insert(0, "<project-root>/firefox/testing/marionette/client")
+sys.path.insert(0, "<project_root>/firefox/testing/marionette/client")
 from marionette_driver.marionette import Marionette
-
-PORT = int(open(os.path.join("<worktree>", ".marionette-port")).read().strip())
-client = Marionette(host="127.0.0.1", port=PORT)
-client.start_session()
-client.set_context(client.CONTEXT_CHROME)
+PORT = int(open("<worktree>/.marionette-port").read().strip())
+client = Marionette(host="127.0.0.1", port=PORT); client.start_session(); client.set_context(client.CONTEXT_CHROME)
 ```
 
-If `marionette_driver` import fails system-wide, run via `<project-root>/firefox/mach python <script>`.
+If the import fails, run scripts with `<project_root>/firefox/mach python <script>`. Take an auth-check screenshot before testing; a sign-in wall is `infra` (see "Sign-in loop" in the launcher reference).
 
-For demos (frozen Nightly.app, no `run.command`): port 2828, launch the binary directly with `-no-remote -marionette -profile <demo>/profile-default`. Do NOT use `./mach run`.
+### Phase 3 — Execute
 
-Take an auth-check screenshot and inspect for sign-in wall before testing.
+One Python script per case in the scratchpad (not `/tmp`). On every failure capture: console (last 20, via the pattern below), screenshot, element `outerHTML` if reachable, and for network, the tool handler's own logging or `performance.getEntriesByType("resource")` from the page.
 
-### Phase 3 — Test execution
+The Firefox DevTools MCP server is **not** attached to prototype builds (it drives a separate Nightly profile), so do not plan on it.
 
-For each test case, write `/tmp/qa-test-<N>.py`. Boilerplate + common patterns are in the Selector Reference and Common Patterns sections below. Capture diagnostics on every failure (console messages, network requests, screenshot, element HTML).
+### Phase 4 — Classify, self-fix infra, live-fix build
 
-After each action, ALSO use Firefox DevTools MCP:
+- `infra` → fix in place (stuck port, FxA dummy prefs, timing), `cycles.infra+=1`, re-run the case.
+- All failures `build` and `$PS check-cap "$DIR" build` passes → live fix loop per `references/live-fix-loop.md`. For **demo** cases, at most `caps.demo_fix_rounds` rounds (default 2). Prompt template (verbatim):
 
-- `list_console_messages` — catch JS errors (MLEngine, auth, fetch failures)
-- `list_network_requests` — verify external API calls fired
-- `take_snapshot` / `screenshot_page` — for content-area context that Marionette can't reach
+  > You are in LIVE FIX MODE. Artifact dir `<DIR>`. Worktree `<WT>`. Failure: `<verbatim>`. Diagnostics: console (last 20) `<…>`; screenshot `<abs path>`; element outerHTML `<…>`. Read only the implicated file(s). Edit. Rebuild (`./mach build faster`, or full `./mach build` if you touched moz.build/jar.mn or added files). Return ONE line: `BUILT` or `BUILD_FAILED: <reason>`. Do not run QA, explore unrelated code, or touch status.yaml.
 
-### Phase 4 — Classify failures
-
-For each failing test, decide spec | design | build | infra. See classification table above.
-
-#### Phase 4.infra — self-fix in place
-
-If profile/auth/port/timing — fix directly:
-
-- Missing pref → write to `<worktree>/profile-default/user.js` (per launcher-and-profile.md, only as a last resort; better to flag golden as broken)
-- Stuck port → `lsof | kill`
-- `NS_ERROR_UNKNOWN_HOST` on FxA → see launcher-and-profile.md "Sign-in loop"
-- Race / blank screenshot → add `time.sleep(2)` and retry
-
-After fix, increment `cycles.infra` and re-test the failing case.
-
-#### Phase 4.live — live fix loop (build-only failures)
-
-**Entry condition:** ALL failing tests are classified `build` AND `cycles.build < caps.build` (read both via `proto-status.sh get`).
-
-Follow `references/live-fix-loop.md`. Summary:
-
-1. Capture diagnostics bundle for each `build` failure: console (last 20), failed network requests, screenshot path, element outerHTML if reachable.
-2. For each failure (max 2 attempts), dispatch a "live-fix" engineer subagent:
-
-   ```
-   Agent(general-purpose, "Live fix")
-   ```
-
-   Prompt template (verbatim):
-
-   > You are in LIVE FIX MODE.
-   >
-   > Artifact dir: `<path>`
-   > Worktree: `<path>`
-   > Failure: `<verbatim from the test result>`
-   > Diagnostics:
-   >   Console (last 20): `<embed>`
-   >   Network failures: `<embed>`
-   >   Screenshot: `<abs path>`
-   >   Element outerHTML: `<embed if available>`
-   >
-   > Read only the file(s) directly implicated. Edit. Rebuild (auto-detect: full `./mach build` if moz.build/jar.mn touched or new files added; else `./mach build faster`). Return ONE line:
-   >
-   >   `BUILT`
-   >   `BUILD_FAILED: <reason>`
-   >
-   > Do NOT run QA. Do NOT explore unrelated code. Do NOT update status.yaml. QA owns verification.
-
-3. On `BUILT`: re-test the failing case via the still-open Marionette session. If pass → mark fixed. If still fail and < 2 attempts → loop. Otherwise escalate.
-4. On `BUILD_FAILED` or escalation: include the failure in the QA report with classification still `build` plus the diagnostics; coordinator will respawn a full engineer.
-
-After the loop, increment `cycles.build+=1` (one increment per loop invocation, regardless of internal attempts).
+  On `BUILT`, re-test the case in the still-open session. After the loop: `cycles.build+=1` once.
+- Any `spec` or `design` failure, or mixed → write the report and exit; the coordinator routes.
 
 ### Phase 5 — Report
 
-Write `reports/qa-cycle-<N>.md`. After writing, also `cp` to `reports/qa-latest.md`.
-
-Cycle number: `N = $($PS get "$DIR" cycles.qa_runs || echo 0) + 1`. Then `$PS set "$DIR" cycles.qa_runs+=1` (a separate counter for run count, not failure classification).
+`N = $PS get "$DIR" cycles.qa_runs` + 1. Write `reports/qa-cycle-N.md`, `cp` to `reports/qa-latest.md`, then `cycles.qa_runs+=1`.
 
 ```markdown
-## QA Report: [Feature]
+## QA Report: [Feature] — cycle N  (branch, date)
 
-**Date:** [date]  **Build:** [worktree branch]  **Cycle:** [N]
+### Demo prompts
+| # | Prompt | Result | Runs | Class | Screenshot |
+|---|--------|--------|------|-------|------------|
 
-### Results
+### Other cases
+| # | Case | Result | Class | Notes |
 
-| # | Test | Status | Class | Notes |
-|---|------|--------|-------|-------|
-| 1 | Sidebar opens | PASS | — | |
-| 2 | Tool fires | FAIL | build | Handler throws on empty params |
+### Live fix loop
+attempted / fixed / escalated — one line.
 
-### Live fix loop (if entered)
+### Diagnostics for open failures
+Per failure: expected, actual, console tail, screenshot path, element HTML if relevant, suggested fix and layer.
 
-- Failures attempted: N
-- Fixed in-place: M
-- Escalated: K
+### Skipped
+One line: which spec criteria were not run and why (cap).
 
-### Diagnostics for unfixed failures
-
-For each remaining failure:
-
-- **Test:** [name]
-- **Class:** `spec | design | build | infra`
-- **Expected:** [from acceptance criteria]
-- **Actual:** [observed]
-- **Console (last 20):** [embedded]
-- **Network failures:** [embedded]
-- **Screenshot:** `screenshots/cycle-<N>-<name>.png`
-- **Element HTML (if relevant):** [embedded]
-- **Suggested fix:** [layer-specific]
-
-### Cycle counter increments applied
-
-- spec: +N    design: +N    build: +N (live loop = +1)    infra: +N (self-fixed)
-
-### Overall status
-
-[PASS — all green | FAIL — N failures across <layers>]
+### Overall
+DEMO: n/N prompts pass · OTHER: n/N · counters applied: spec +a design +b build +c infra +d
 ```
 
 ### Phase 6 — Cleanup
 
-```python
-client.delete_session()
-```
-
-```bash
-kill $FIREFOX_PID 2>/dev/null || true
-rm -f /tmp/qa-test-*.py /tmp/qa-connect-test.py
-```
-
-**NEVER** use `pkill`, `killall`, or pattern-based kills.
+`client.delete_session()`, `kill $FIREFOX_PID`, remove your scratch scripts. **Never** `pkill`/`killall` Firefox.
 
 ---
 
-## Common Marionette patterns
+## Marionette patterns
 
-**Open Smart Window:**
+**Open Smart Window**
 
 ```python
 client.execute_script("""
-  const { AIWindowUI } = ChromeUtils.importESModule(
-    "moz-src:///browser/components/aiwindow/ui/modules/AIWindowUI.sys.mjs"
-  );
+  const { AIWindowUI } = ChromeUtils.importESModule("moz-src:///browser/components/aiwindow/ui/modules/AIWindowUI.sys.mjs");
   if (!AIWindowUI.isSidebarOpen(window)) AIWindowUI.toggleSidebar(window);
 """, sandbox="system")
 ```
 
-**Wait for Smart Window load:**
+**Wait for it**
 
 ```python
 client.execute_script("""
-  const browser = document.getElementById("ai-window-browser");
-  let tries = 0;
-  while (!browser?.contentDocument?.querySelector("ai-window:defined") && tries < 50) {
-    await new Promise(r => setTimeout(r, 200));
-    tries++;
-  }
+  const browser = document.getElementById("ai-window-browser"); let tries = 0;
+  while (!browser?.contentDocument?.querySelector("ai-window:defined") && tries < 50) { await new Promise(r => setTimeout(r, 200)); tries++; }
   if (tries >= 50) throw new Error("Timeout waiting for ai-window");
 """, sandbox="system")
 ```
 
-**Type and submit in Smartbar:**
+**Type a prompt and submit**
 
 ```python
 client.execute_script("""
-  const browser = document.getElementById("ai-window-browser");
-  const aiWindow = browser.contentDocument.querySelector("ai-window");
-  const smartbar = aiWindow.shadowRoot.querySelector("#ai-window-smartbar");
-  const input = smartbar.inputField;
-  input.focus();
-  input.value = arguments[0];
+  const aiWindow = document.getElementById("ai-window-browser").contentDocument.querySelector("ai-window");
+  const input = aiWindow.shadowRoot.querySelector("#ai-window-smartbar").inputField;
+  input.focus(); input.value = arguments[0];
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
-""", script_args=["<query>"], sandbox="system")
+""", script_args=["<prompt>"], sandbox="system")
 ```
 
-**Console messages:**
+**Console tail**
 
 ```python
 errors = client.execute_script("""
   const cs = Cc["@mozilla.org/consoleservice;1"].getService(Ci.nsIConsoleService);
-  const messages = [];
-  cs.getMessageArray(messages, {});
-  return messages.slice(-20).map(m => m.toString());
+  const m = []; cs.getMessageArray(m, {}); return m.slice(-20).map(x => x.toString());
 """, sandbox="system")
 ```
 
-**Take labeled screenshot:**
+**Screenshot**
 
 ```python
 import base64
-data = client.screenshot()
-with open(f"<artifact_dir>/screenshots/cycle-{N}-{name}.png", "wb") as f:
-    f.write(base64.b64decode(data))
+open(f"<DIR>/screenshots/cycle-{N}-{name}.png", "wb").write(base64.b64decode(client.screenshot()))
 ```
 
-**AI Window mode (ensures sidebar shows on `about:newtab`):**
+**Full-page AI Window (when the sidebar is 0×0 on `about:newtab`)**
 
 ```python
 client.execute_script("""
-  const { AIWindow } = ChromeUtils.importESModule(
-    "moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs"
-  );
+  const { AIWindow } = ChromeUtils.importESModule("moz-src:///browser/components/aiwindow/ui/modules/AIWindow.sys.mjs");
   if (!AIWindow.isAIWindowActive(window)) AIWindow.toggleAIWindow(window, true, "qa");
 """, sandbox="system")
 ```
 
----
-
 ## Selector reference
 
-Verified from `head.js` browser test helpers:
+| Element         | Context              | Selector                                                          |
+| --------------- | -------------------- | ----------------------------------------------------------------- |
+| Sidebar browser | chrome               | `document.getElementById("ai-window-browser")`                    |
+| AI Window       | sidebar content      | `…contentDocument.querySelector("ai-window")`                     |
+| Smartbar        | ai-window shadow     | `aiWindow.shadowRoot.querySelector("#ai-window-smartbar")`        |
+| Smartbar input  | smartbar             | `smartbar.inputField`                                             |
+| Chat browser    | ai-window shadow     | `aiWindow.shadowRoot.querySelector("#aichat-browser")`            |
+| Chat content    | chat browser content | `chatBrowser.contentDocument.querySelector("ai-chat-content")`    |
+| Messages        | chat content shadow  | `chatContent.shadowRoot.querySelectorAll("ai-chat-message")`      |
+| Your artifact   | chat content shadow  | `chatContent.shadowRoot.querySelector("<feature>-artifact")`      |
 
-| Element            | Context                  | Selector                                                                  |
-| ------------------ | ------------------------ | ------------------------------------------------------------------------- |
-| Sidebar browser    | Chrome                   | `document.getElementById("ai-window-browser")`                            |
-| AI Window          | AI Window content        | `sidebarBrowser.contentDocument.querySelector("ai-window")`               |
-| Smartbar           | AI Window shadow         | `aiWindow.shadowRoot.querySelector("#ai-window-smartbar")`                |
-| Smartbar input     | Smartbar                 | `smartbar.inputField`                                                     |
-| Chat browser       | AI Window shadow         | `aiWindow.shadowRoot.querySelector("#aichat-browser")`                    |
-| Chat content       | Chat browser content     | `chatBrowser.contentDocument.querySelector("ai-chat-content")`            |
-| Chat messages      | Chat content shadow      | `chatContent.shadowRoot.querySelectorAll("ai-chat-message")`              |
-| Prompts            | AI Window shadow         | `aiWindow.shadowRoot.querySelector("smartwindow-prompts")`                |
-| Prompt buttons     | Prompts shadow           | `prompts.shadowRoot.querySelectorAll(".sw-prompt-button")`                |
-| Weather widget     | Chat content shadow      | `chatContent.shadowRoot.querySelector("weather-artifact")`                |
-
-The chat content (`about:aichatcontent`) is in a remote `<browser remote="true">`. Marionette's CONTEXT_CONTENT and CONTEXT_CHROME cannot access its DOM. For widget verification: programmatic checks on `ai-window` element properties (`conversationMessageCount`, `conversationId`, `showStarters`) + `screenshot()` (which captures composited remote frames). Allow 30-45s for widget+LLM queries.
-
----
-
-## DevTools MCP usage
-
-Use alongside Marionette — DevTools MCP sees content pages where Marionette can't.
-
-| Tool                         | When to use                                                              |
-| ---------------------------- | ------------------------------------------------------------------------ |
-| `list_console_messages`      | After every test action; check for JS errors and MLEngine/auth/fetch    |
-| `list_network_requests`      | Verify external API calls fired (Open-Meteo, Geoapify, etc.)             |
-| `get_network_request`        | Inspect specific API response payloads                                   |
-| `take_snapshot`              | DOM with stable UIDs (for content pages)                                 |
-| `screenshot_page`            | Content area screenshot (vs Marionette's chrome screenshot)              |
-| `click_by_uid` / `fill_by_uid` | Interact with content-page elements                                    |
-| `navigate_page`              | Move away from `about:newtab` before opening Smart Window                |
-
-DevTools MCP cannot see chrome UI or the chat-content remote frame. Use both tools together.
-
----
+The chat content (`about:aichatcontent`) is a remote `<browser>`; Marionette cannot reach its DOM from either context. Verify widgets through `ai-window` properties (`conversationMessageCount`, `conversationId`, `showStarters`) plus `screenshot()`, which does capture remote frames. Allow 30–45 s for widget + LLM answers.
 
 ## Troubleshooting
 
-| Problem                                  | Solution                                                                                                |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Marionette import fails                  | Use `<project-root>/firefox/mach python /tmp/qa-test.py`                                                |
-| Marionette port busy                     | `lsof -i :$(cat <wt>/.marionette-port) -t \| xargs kill -9` then relaunch via `run.command`             |
-| Firefox won't start                      | Another instance using same profile; `-no-remote` flag. Never broad-kill.                              |
-| Shadow DOM selector returns null         | Add wait/poll loop; Lit components render async after `updateComplete`                                  |
-| `NS_ERROR_UNKNOWN_HOST` on FxA           | See `launcher-and-profile.md` "Sign-in loop" — classify `infra`, self-fix                              |
-| `execute_script` timeout                 | `client.timeout.script = 60`                                                                            |
-| Screenshot blank/black                   | `time.sleep(2)` before screenshot                                                                       |
-| No LLM response (msgCount stays at 2)    | Check `browser.ml.enable=true`; check FxA `hasLocalSession()`; allow 30-45s                            |
-| Sidebar 0x0                              | Navigate away from `about:newtab` first, or use fullpage AI Window                                     |
-| `conversationState` resets unexpectedly  | Standalone widget entries missing `convId` — see `widget-llm-coexistence.md`                           |
-| "Something went wrong" in chat           | Console: "MLEngine is disabled" → `browser.ml.enable=false`; auth errors → FxA not signed in           |
-
----
+| Problem                                 | Do                                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------------------- |
+| Marionette import fails                 | `<project_root>/firefox/mach python <script>`                                         |
+| Port busy                               | `lsof -i :$(cat <wt>/.marionette-port) -t \| xargs kill -9`, relaunch via run.command |
+| Firefox won't start                     | Another instance on the same profile. Never broad-kill.                               |
+| Shadow selector null                    | Poll; Lit renders after `updateComplete`                                              |
+| `NS_ERROR_UNKNOWN_HOST` on FxA          | Launcher reference, "Sign-in loop". `infra`, self-fix.                                |
+| `execute_script` timeout                | `client.timeout.script = 60`                                                          |
+| Blank screenshot                        | `time.sleep(2)` first                                                                 |
+| No LLM reply (msgCount stuck at 2)      | `browser.ml.enable`, FxA session; wait 45 s                                           |
+| `conversationState` resets              | Widget entries missing `convId`; see widget-llm-coexistence                           |
+| "Something went wrong" in chat          | Console says "MLEngine is disabled" → pref; auth errors → FxA                         |
 
 ## Rules
 
-- **NEVER kill Firefox broadly.** Only `$FIREFOX_PID` you launched, or `lsof :<port>`. Most important rule.
-- **Classify every failure.** `spec | design | build | infra`. Wrong label burns a cycle in the wrong layer.
-- **Use `proto-status.sh`.** Never edit `status.yaml` by hand. Never set `completed.qa: true` (coordinator owns it).
-- **Use the live fix loop when applicable.** `build`-only failures with budget remaining → enter loop instead of round-tripping the coordinator.
-- **Embed diagnostics in the report.** Console, network, screenshot, element HTML. The coordinator's respawned engineer can't see your live session.
-- **Self-fix `infra` only.** No source-code patches in pipeline mode for `spec`/`design`/`build` outside the live loop. (Standalone mode: small `build` patches still allowed.)
-- **Always take screenshots.** Every test, pass or fail. Read them with the Read tool to verify visually.
-- **`reports/qa-latest.md`** is a copy of the latest cycle report (use `cp`, not symlink).
-- **Cycle caps:** read `caps.<layer>` from `status.yaml` per run. The coordinator may raise them; honor what's there.
+- **Never kill Firefox broadly.** Only `$FIREFOX_PID` or the Marionette port's process.
+- **Demo prompts first, live, verbatim.** Report them separately and honestly, including "0 of 3".
+- **≤ 8 cases.** Say what you skipped.
+- **Classify every failure.**
+- **Embed diagnostics** in the report; the next engineer cannot see your session.
+- **Self-fix `infra` only**; `build` only inside the live fix loop.
+- **Screenshots for every case**, and look at them with the Read tool.
+- **Use `$PS`.** Never edit `status.yaml`; never set `completed.*`.

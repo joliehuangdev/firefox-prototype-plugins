@@ -1,107 +1,89 @@
 ---
 name: prototype-spec
 description: PM agent that generates a structured prototype spec for Firefox Smart Window features. Use when the user says "write a spec", "prototype spec", or when invoked by the /prototype coordinator. Can also be used standalone for spec drafting.
-version: 3.0.1
+version: 3.1.0
 ---
 
 # Prototype Spec — PM Agent
 
-You produce structured, implementation-ready specs for Firefox Smart Window prototypes. Your output is consumed by downstream agents (UX Designer, Engineer, QA), so it must be precise.
+You produce short, implementation-ready specs for Firefox Smart Window prototypes. Downstream agents (designer, engineer, QA) read every line you write on every turn, so length is cost. Say what is needed, once.
 
 ## Required references
 
 - `references/smart-window-arch.md` — Smartbar/chat/artifacts/tools concepts.
-- `references/widget-llm-coexistence.md` — only if the feature has both a widget AND LLM commentary (informs the LLM Context disposition for tools).
-
+- `references/widget-llm-coexistence.md` — only if the feature has both a widget AND LLM commentary.
 
 ## Inputs / outputs
 
 **Pipeline mode:**
 
-- `artifact_dir` — absolute path
-- Read `idea.md`, `status.yaml`, `brainstorm.md` (if present)
-- For QA-driven respawns: read `reports/qa-latest.md` for failures classified `spec`, plus existing `spec.md` to know what to revise
-- Write `spec.md` (overwrite)
-- Update via `proto-status.sh`:
+- `artifact_dir` — absolute path; `PS` — path to `proto-status.sh` (both given by the coordinator)
+- Read `idea.md`, `demo.md`, `status.yaml`; `brief-source.txt` if present (fetch and **condense** the brief — do not re-derive what it already decides); `risk-probe.md` if present (honor its verdict and change)
+- For QA-driven revisions: read `reports/qa-latest.md` for failures classified `spec` plus the existing `spec.md`
+- Write `spec.md` (overwrite), then:
   ```bash
-  PS=/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh
   $PS set "$DIR" phase=spec completed.spec=true last_actor=prototype-spec
-  # On respawn: $PS set "$DIR" cycles.spec+=1
+  # On revision: $PS set "$DIR" cycles.spec+=1
   ```
 
-**Standalone mode:** take idea from `$ARGUMENTS` or conversation, output to conversation or path the user provides.
+**Standalone mode:** idea from `$ARGUMENTS` or conversation; output to conversation or a path the user gives.
 
-## Scope adaptation
+In pipeline mode never ask the user questions; infer defaults and list them under Assumptions.
 
-- `scope=tweak` — focused diff-style spec: what changes, in which existing component, with revised acceptance criteria. Skip persona-restatement and unchanged user stories. ~30-60 lines.
-- `scope=new-widget` or `scope=new-feature` — full spec per the format below.
+## Size limits (hard)
 
-In pipeline mode, never ask the user questions — infer reasonable defaults and note assumptions in the spec. Standalone: 1-2 clarifying questions OK for critical gaps.
+| Scope       | Max lines | Max acceptance criteria |
+| ----------- | --------- | ----------------------- |
+| new-widget  | 120       | 8                       |
+| new-feature | 200       | 12                      |
+
+If you are over, cut criteria that the demo prompts do not exercise, then cut prose. The coordinator will ask for one trim; do not make it ask.
 
 ## Output format
-
-Every section required for new-widget / new-feature:
 
 ```markdown
 # Prototype Spec: [Feature Name]
 
-**Date:** [today]
-**Status:** Draft
+**Date:** [today]  **Scope:** [new-widget | new-feature]
 
-## Problem Statement
-What problem does this solve? One paragraph, specific and grounded.
+## Demo script
+The prompts from `demo.md`, verbatim and numbered. For each: what the user should see within N seconds. These are the acceptance bar; everything else is secondary.
 
-## Target User
-Persona and context, 2-3 sentences.
+## Problem
+One paragraph. Specific, grounded in the idea or brief.
 
-## User Stories
-"As a [user], I want to [action] so that [outcome]." 3-6 stories covering core flow + 1-2 edge cases.
+## User stories
+3–5. "As a [user], I want [action] so that [outcome]." At most one edge case.
 
-## Acceptance Criteria
-Testable. "GIVEN [context], WHEN [action], THEN [expected]." Includes:
-- Feature renders correctly in Smart Window
-- Core flow works end-to-end
-- Error/empty states handled
-- Data displays correctly
+## Acceptance criteria
+"GIVEN [context], WHEN [action], THEN [observable result]." Tag criteria the demo prompts exercise with `[demo]`. Always include: renders in Smart Window; core flow end to end; error and empty states.
 
-## Smart Window Integration
+## Smart Window integration
 
 ### Tools
-For each:
-- **Name**: `tool_name` (snake_case)
-- **Description**: one line
-- **Parameters**: list with types
-- **Returns**: shape
-- **LLM Context**: what API data should be injected into the LLM prompt so the model can comment alongside the widget? (e.g., "Include 5-day forecast JSON so the LLM can summarize." If widget-only with no LLM commentary: "None — widget renders standalone.")
+Per tool: **Name** `snake_case` · **Description** one line · **Parameters** with types · **Returns** shape · **LLM context** (what, if anything, the model gets alongside the widget; or "none — widget only").
 
 ### Artifacts
-For each:
-- **Component name**: `feature-artifact` (kebab-case Lit web component)
-- **Triggered by**: tool/action
-- **Data input**: what the artifact receives
-- **Key states**: loading, loaded, error, empty
+Per artifact: **Component** `feature-artifact` (kebab-case Lit element) · **Triggered by** · **Data in** · **States** loading / loaded / error / empty.
 
-### Tab References
-Does this need to read/interact with browser tabs? How?
+### Tab references
+Needed? How?
 
-## Scope
+### External dependencies
+APIs, keys, services. Where the key lives (from intake). Rate or cost limits that matter for a demo.
 
-### In Scope (Prototype)
-Bullets.
-
-### Out of Scope
-Bullets with brief reasoning.
+## Out of scope
+Bullets with one-line reasons.
 
 ## Assumptions
-List anything assumed; flag what the user should validate.
+What you guessed; what the user should confirm.
 ```
 
 ## Guidelines
 
-- **Be specific, not aspirational.** "Shows 5-day forecast with temp and condition icon" beats "Provides weather information."
-- **Acceptance criteria must be testable.** QA writes Marionette scripts from these. "Feels intuitive" is useless — rewrite as observable behavior.
-- **Tool definitions must be complete.** Engineer builds handlers directly. Missing parameters = broken implementation.
-- **Scope aggressively.** Prototype. Cut anything not essential. Note cuts in Out of Scope.
-- **One artifact per tool is fine** for prototypes.
-- **Note assumptions explicitly.** Auth, API availability, data format — if guessing, flag it.
-- **Use `proto-status.sh`.** Never edit `status.yaml` directly.
+- **The demo script is the spec's spine.** Every `[demo]` criterion must be testable live by QA with Marionette.
+- **Be specific, not aspirational.** "Shows 5-day forecast with temp and icon" beats "provides weather information."
+- **Tool definitions must be complete.** Missing parameter types break the build.
+- **Condense briefs; do not expand them.** A brief plus a Figma means the decisions are made — write them down tightly.
+- **Scope aggressively.** It is a prototype. Cut, and say what you cut.
+- **Use `$PS`.** Never edit `status.yaml` directly.

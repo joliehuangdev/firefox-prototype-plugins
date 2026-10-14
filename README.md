@@ -1,85 +1,75 @@
 # Firefox Prototype Plugins
 
-Claude Code plugins that orchestrate building Firefox Smart Window prototypes end-to-end — from product idea to working, tested feature.
-Start with `/prototype` and co-create the squad agents to 10x your prototyping velocity.
+Claude Code plugins that take a Firefox Smart Window idea to a demoable, QA'd build in a git worktree. Start with `/prototype`.
 
 ## What's included
 
-| Plugin | Skill | Role | What it does |
-| ------ | ----- | ---- | ------------ |
-| `prototype` | `/prototype` | Coordinator | Routes work across all agents below; adapts pipeline depth to scope; persists state for resumability |
-| `prototype-spec` | `/prototype-spec` | PM Agent | Generates a structured prototype spec with user stories, acceptance criteria, and tool definitions |
-| `prototype-review` | `/prototype-review` | Reviewer | Adversarial review of spec and design — forces findings before the engineer wastes a build cycle |
-| `prototype-design` | `/prototype-design` | UX Designer Agent | Produces a UI spec (component hierarchy, states, interactions) and optional Figma mockups |
-| `prototype-distill` | `/prototype-distill` | Distillator | Compresses relevant Firefox codebase context into a focused `distillate.md` for the engineer |
-| `prototype-build` | `/prototype-build` | Engineer Agent | Builds the prototype in an isolated worktree following existing codebase patterns |
-| `prototype-qa` | `/prototype-qa` | QA Agent | Validates via Marionette with screenshots; classifies failures by layer for triaged retries |
-| `brainstorm` | `/brainstorm` | Ideation | Anti-bias domain-shift ideation for new features. Standalone — the coordinator does brainstorm inline, so this is for exploring a problem space on its own |
-| `qa-extension` | `/qa-extension` | Extension QA | Standalone utility to test, debug, and fix Firefox browser extensions — independent of the prototype pipeline |
+| Plugin | Skill | Role |
+| ------ | ----- | ---- |
+| `prototype` | `/prototype` | Coordinator: intake, worktree + background build, routing, budget, handover |
+| `prototype-spec` | `/prototype-spec` | PM: short spec with a demo script and tagged acceptance criteria |
+| `prototype-review` | `/prototype-review` | Adversarial review of spec and design (≤80 lines) |
+| `prototype-design` | `/prototype-design` | UX: transcribes your Figma if you have one, otherwise a ≤120-line UI spec |
+| `prototype-distill` | `/prototype-distill` | Lifts the code patterns the engineer must copy, from the worktree |
+| `prototype-build` | `/prototype-build` | Engineer: builds in the worktree, smokes the first demo prompt, writes the handover README |
+| `prototype-qa` | `/prototype-qa` | QA: demo prompts first and live, then ≤5 more cases; live fix loop for build bugs |
+| `brainstorm` | `/brainstorm` | Standalone ideation (the coordinator scopes inline) |
+| `qa-extension` | `/qa-extension` | Standalone Firefox extension QA |
 
-## Pipeline
+## Pipeline (v3.1)
 
 ```text
-Idea -> Spec -> [Spec review + Design + Distill in parallel] -> Design review -> Build -> QA
-                       ^                                                            |
-                       +-- classified retry loop (spec / design / build) -----------+
+Intake (scope, demo prompts, inputs, keys, budget)
+  → worktree + background build
+  → [risk probe, new-feature with external dependency]
+  → spec → [spec review ‖ design ‖ distill] → design review
+  → build (one engineer, kept alive for fixes)
+  → QA: smoke → demo prompts live → ≤5 more
+  → triage by class (spec/design/build/infra) with caps → handover README
 ```
 
-The coordinator asks a single sizing question up front (tweak / new widget / new feature) and adapts the pipeline accordingly — a tweak skips review and design and runs a quick distill; new features run the full chain, with brainstorm handled inline in the coordinator. After the spec, spec review, design, and distill fan out in parallel. QA failures are classified (`spec | design | build | infra`) and routed back to the responsible agent with per-layer retry caps (`infra` is self-fixed by QA rather than re-spawned).
+Tweaks skip all agents: the coordinator edits, builds and smokes in the worktree itself.
 
-All artifacts live in `~/FirefoxPrototype/_prototype/<slug>/` so any run can be resumed with `/prototype resume`.
+What changed from v3.0, and why (measured on two Oct 2026 runs: 25 agents, ~7.5 h, 127M context tokens, demo still failing):
+
+- **Demo prompts are collected at intake and are the bar.** QA runs them first, live; `completed.demo` is set only when they pass. Offline criteria passing no longer counts as done.
+- **Everything you'd otherwise be asked mid-run is asked up front**: keys, prompts, existing brief/Figma/branch, time budget.
+- **Worktree and first build start at intake**, overlapping the ~10 min artifact build with planning.
+- **Hard size limits**: spec ≤120/200 lines with ≤8/12 criteria, design ≤120, distillate ≤300, reviews ≤80, QA ≤8 cases. Agents re-read these on every turn, so length is cost.
+- **Agents are reused** via `SendMessage` for fixes instead of respawned.
+- **Progress line after every phase** (minutes, tokens, budget) and a hard stop at the budget.
+- **Provided Figma is transcribed, not redesigned**; Figma generation is opt-in.
+- **Distill and build read the worktree**, not the main checkout (branch bases differ).
+- **Handover README** in the worktree: what it does, prompts to try, setup, limits.
 
 ## Installation
 
 ```bash
 claude plugin marketplace add joliehuangdev/firefox-prototype-plugins
-claude plugin install prototype@firefox-prototype-plugins
-claude plugin install prototype-spec@firefox-prototype-plugins
-claude plugin install prototype-review@firefox-prototype-plugins
-claude plugin install prototype-design@firefox-prototype-plugins
-claude plugin install prototype-distill@firefox-prototype-plugins
-claude plugin install prototype-build@firefox-prototype-plugins
-claude plugin install prototype-qa@firefox-prototype-plugins
-claude plugin install brainstorm@firefox-prototype-plugins
-claude plugin install qa-extension@firefox-prototype-plugins
+for p in prototype prototype-spec prototype-review prototype-design prototype-distill prototype-build prototype-qa; do
+  claude plugin install $p@firefox-prototype-plugins
+done
 ```
 
 ## Usage
 
-Run the full pipeline:
-
 ```text
-/prototype build a recipe suggestion feature that reads the user's open tabs for ingredients
-```
-
-Resume a stalled run:
-
-```text
+/prototype <idea, or a brief/Figma/branch to start from>
 /prototype resume
 ```
 
-Or use individual skills standalone:
-
-```text
-/prototype-spec a tab grouping assistant that organizes tabs by topic
-/prototype-review
-/prototype-design
-/prototype-distill
-/prototype-build
-/prototype-qa
-```
+Standalone: `/prototype-spec`, `/prototype-review`, `/prototype-design`, `/prototype-distill`, `/prototype-build`, `/prototype-qa` each take an `artifact_dir` or a description.
 
 ## Prerequisites
 
-You must have a local Firefox build before using these plugins. The build and QA skills modify and run code directly in the Firefox source tree.
+- A local Firefox checkout laid out as `<project_root>/firefox/`, `<project_root>/worktrees/`, `<project_root>/_prototype/`, with the helper scripts in `<project_root>/bin/` (`new-prototype.sh`, `launch-prototype.sh`, `seed-golden.sh`, `proto-status.sh`; a copy of the last ships in `prototype/skills/prototype/scripts/`). Default `project_root` is `~/FirefoxPrototype`; the coordinator asks if yours differs.
+- Artifact-build mozconfig at `~/.firefox-prototype-mozconfig`; golden profile seeded once with `seed-golden.sh`.
+- Python 3 with the Marionette client (bundled in the Firefox tree).
+- Figma MCP server, only if you want designs read from or written to Figma.
 
-Follow the setup instructions at: <https://firefox-source-docs.mozilla.org/setup/index.html>
+## Developing these plugins
 
-## Other requirements
-
-- [Claude Code](https://claude.ai/claude-code) CLI
-- Python 3 with Marionette client (bundled in the Firefox source tree)
-- Figma MCP server (optional, for design mockups)
+Edit under the marketplace directory, bump `plugin.json` `version`, commit and push, then `claude plugin update <plugin>@<marketplace>` and restart the session. The plugin cache is keyed by version; unbumped edits are not picked up.
 
 ## License
 
