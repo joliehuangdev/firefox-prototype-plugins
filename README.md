@@ -30,7 +30,7 @@ Intake (scope, demo prompts, inputs, keys, budget)
 
 Tweaks skip all agents: the coordinator edits, builds and smokes in the worktree itself.
 
-What changed in v3.1, and why (two v3.0 runs in Oct 2026 took 2 to 3 hours each and used 25 agents and 127M context tokens between them; the second was stopped for cost before its demo passed):
+What changed in v3.1, and why (learned from two v3.0 runs in Oct 2026):
 
 - **Demo prompts are collected at intake and are the bar.** QA runs them first, live; `completed.demo` is set only when they pass. Offline criteria passing no longer counts as done.
 - **Everything you'd otherwise be asked mid-run is asked up front**: keys, prompts, existing brief/Figma/branch, time budget.
@@ -82,16 +82,6 @@ Two steps are always yours: `./mach bootstrap` in your own terminal (it asks que
 ```
 
 Standalone: `/prototype-spec`, `/prototype-review`, `/prototype-design`, `/prototype-distill`, `/prototype-build`, `/prototype-qa` each take an `artifact_dir` or a description.
-
-## Cost
-
-A new-feature run is expensive. Measured on two real new-feature runs (Oct 2026, v3.0, before the v3.1 cuts), each run:
-
-- took 2 to 3 hours from intake to the last QA fix,
-- used about 60 to 65M context tokens across its agents, plus 6 to 13M for the coordinator; over 90% of that is cache reads,
-- spent about two thirds of its tokens in build and QA.
-
-The first run ended with a working demo (about 2 hours); the second was stopped for cost at about 3 hours, before its live demo passed. A tweak skips the agents and costs far less; a new widget falls in between. You set a time budget at intake, and the coordinator stops there and asks before spending more.
 
 ## What it needs
 
