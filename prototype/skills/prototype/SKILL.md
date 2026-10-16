@@ -1,7 +1,7 @@
 ---
 name: prototype
-description: Coordinator skill that orchestrates the full prototype pipeline for Firefox Smart Window. Use when the user says "prototype", "build a prototype", "let's prototype", or provides a product idea they want turned into a working Smart Window prototype end-to-end. Also use with "resume prototype" to continue a stalled run.
-version: 3.1.0
+description: Coordinator skill that orchestrates the full prototype pipeline for Firefox Smart Window. Use when the user says "prototype", "build a prototype", "let's prototype", or provides a product idea they want turned into a working Smart Window prototype end-to-end. Also use with "resume prototype" to continue a stalled run, and with "prototype setup" to set up a new machine.
+version: 3.2.0
 ---
 
 # Prototype Pipeline Coordinator
@@ -15,13 +15,16 @@ You take a Smart Window idea to a demoable, QA'd build in a Firefox worktree. Yo
 Set these once at intake and pass them in every sub-agent prompt:
 
 ```bash
-PROJECT_ROOT=/Users/joliehuang/FirefoxPrototype       # ask only if the user's layout differs
+SCRIPTS=<this skill's base directory>/scripts         # plugin copy of the helpers; the source of truth
+PROJECT_ROOT=$HOME/FirefoxPrototype                   # default; ask if it doesn't exist
 PS="$PROJECT_ROOT/bin/proto-status.sh"                # status.yaml helper (init/set/get/check-cap/note)
 NEWWT="$PROJECT_ROOT/bin/new-prototype.sh"            # worktree creator: <name> [base-ref]
 DIR="$PROJECT_ROOT/_prototype/<slug>"                 # artifact dir
 ```
 
-If `$PS` is missing, copy it from `scripts/proto-status.sh` next to this SKILL.md. **Sub-skills must never write `status.yaml` by hand.**
+If `$HOME/FirefoxPrototype` doesn't exist, ask the user where their prototype root is (the folder holding `firefox/`, `worktrees/`, `_prototype/`, `bin/`), or offer `/prototype setup` to create it.
+
+Then run the preflight: `bash "$SCRIPTS/setup.sh" --preflight "$PROJECT_ROOT"`. It installs or refreshes the helper scripts in `$PROJECT_ROOT/bin/` from the plugin and prints only problems. On a non-zero exit, show its output, offer `/prototype setup` and stop. A missing golden profile is only a warning, but tell the user at intake: build smoke and QA can't launch Firefox until it is seeded. **Sub-skills must never write `status.yaml` by hand.**
 
 References in `references/` next to this SKILL.md: `artifact-convention.md` (layout, status schema), `smart-window-arch.md`, `smartwindow-design-system.md`, `launcher-and-profile.md`, `widget-llm-coexistence.md`, `live-fix-loop.md`. Each sub-skill ships its own copy of the ones it needs.
 
@@ -34,6 +37,22 @@ Each `Agent` result ends with `<usage>subagent_tokens: N tool_uses: N duration_m
 ```
 
 When the total passes `time_budget_min` (set at intake), finish the current agent, then **stop and ask** before spawning anything else. Record the pause with `$PS set "$DIR" phase=blocked blocked_on="time budget reached at <phase>"`.
+
+---
+
+## Setup (`/prototype setup`)
+
+When `$ARGUMENTS` is `setup`, set up this machine instead of running the pipeline:
+
+1. Resolve `PROJECT_ROOT` as above. Create a missing root only if the user agrees.
+2. Run `bash "$SCRIPTS/setup.sh" "$PROJECT_ROOT"` and show its report. It creates the folders, the helper scripts in `bin/`, `~/.firefox-prototype-mozconfig` (artifact builds) and the `ai` remote, then lists what needs the user, in order.
+3. Offer each "Needs you" item as its own question, in that order:
+   - **Clone Firefox** (several GB): on yes, run `bash "$SCRIPTS/setup.sh" --clone-firefox "$PROJECT_ROOT"` with `run_in_background: true`.
+   - **Bootstrap** asks questions, so the user runs the printed `./mach bootstrap` command in their own terminal. Wait for them.
+   - **First build** (artifact build, about 12 min): on yes, run the printed command with `run_in_background: true`.
+   - **Golden profile**, after the build: run `$PROJECT_ROOT/bin/seed-golden.sh` with `run_in_background: true` (it returns when Firefox quits). Firefox opens on a new, empty profile; the user signs in with their own Firefox Account, sends 3 Smart Window messages and quits with Cmd-Q. Then run `verify-golden.sh`. Never copy an existing profile into the golden one.
+4. Figma MCP is optional. Say whether `mcp__figma__*` tools are available in this session; if not, give the install command from the report.
+5. Rerun `setup.sh` and show the final report. Don't start a prototype.
 
 ---
 

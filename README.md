@@ -44,28 +44,53 @@ What changed from v3.0, and why (measured on two Oct 2026 runs: 25 agents, ~7.5 
 
 ## Installation
 
+Two commands, then restart Claude Code:
+
 ```bash
 claude plugin marketplace add joliehuangdev/firefox-prototype-plugins
-for p in prototype prototype-spec prototype-review prototype-design prototype-distill prototype-build prototype-qa; do
-  claude plugin install $p@firefox-prototype-plugins
-done
+for p in prototype prototype-spec prototype-review prototype-design prototype-distill prototype-build prototype-qa; do claude plugin install $p@firefox-prototype-plugins; done
 ```
+
+## Setup (once per machine)
+
+In Claude Code:
+
+```text
+/prototype setup
+```
+
+It works in `~/FirefoxPrototype` unless you name another folder, and:
+
+- creates `worktrees/`, `_prototype/` and `bin/` (the helper scripts, copied from the plugin),
+- clones Firefox into `firefox/` if you say yes (several GB) and adds the `ai` remote ([Firefox-AI/firefox-prototypes](https://github.com/Firefox-AI/firefox-prototypes)), whose `ai/main` is the default base for new prototypes,
+- writes `~/.firefox-prototype-mozconfig` for artifact builds,
+- checks the Mozilla build toolchain, the Marionette Python client and, optionally, the Figma MCP,
+- lists what it couldn't do, in order.
+
+Two steps are always yours: `./mach bootstrap` in your own terminal (it asks questions), and signing in to the golden test profile with your own Firefox Account. `seed-golden.sh` starts that profile empty; it never copies an existing one.
+
+**First build:** the first artifact build takes about 12 minutes (it downloads compiled C++ and Rust from Mozilla CI instead of compiling them). Every prototype gets its own worktree and build; `/prototype` starts that build in the background at intake so it overlaps with the spec.
 
 ## Usage
 
 ```text
 /prototype <idea, or a brief/Figma/branch to start from>
 /prototype resume
+/prototype setup
 ```
 
 Standalone: `/prototype-spec`, `/prototype-review`, `/prototype-design`, `/prototype-distill`, `/prototype-build`, `/prototype-qa` each take an `artifact_dir` or a description.
 
-## Prerequisites
+## Cost
 
-- A local Firefox checkout laid out as `<project_root>/firefox/`, `<project_root>/worktrees/`, `<project_root>/_prototype/`, with the helper scripts in `<project_root>/bin/` (`new-prototype.sh`, `launch-prototype.sh`, `seed-golden.sh`, `proto-status.sh`; a copy of the last ships in `prototype/skills/prototype/scripts/`). Default `project_root` is `~/FirefoxPrototype`; the coordinator asks if yours differs.
-- Artifact-build mozconfig at `~/.firefox-prototype-mozconfig`; golden profile seeded once with `seed-golden.sh`.
-- Python 3 with the Marionette client (bundled in the Firefox tree).
-- Figma MCP server, only if you want designs read from or written to Figma.
+A new-feature run is expensive. Baseline from two real new-feature runs (Oct 2026, v3.0): about 127M context tokens and about 7.5 hours of agent time, mostly cache reads. Build and QA were about two thirds of it. A tweak skips the agents and costs far less; a new widget falls in between. You set a time budget at intake, and the coordinator stops there and asks before spending more.
+
+## What it needs
+
+- macOS with the Xcode Command Line Tools (git, python3).
+- Disk: about 10 GB for the Firefox checkout, plus about 5 GB per prototype worktree (source, build output and its test profile).
+- A Firefox Account for the golden profile.
+- Figma MCP only if you want designs read from or written to Figma.
 
 ## Developing these plugins
 

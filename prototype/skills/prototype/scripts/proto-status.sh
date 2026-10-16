@@ -1,4 +1,7 @@
 #!/bin/bash
+# Installed into <project_root>/bin/ by the prototype plugin's setup.sh.
+# Edit the plugin copy (prototype/skills/prototype/scripts/), not the installed one.
+#
 # proto-status.sh — single-source-of-truth helper for mutating _prototype/<slug>/status.yaml
 #
 # Usage:

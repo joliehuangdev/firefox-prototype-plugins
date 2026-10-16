@@ -1,0 +1,21 @@
+# Single source of truth for Firefox prototype build flags.
+# Copied to ~/.firefox-prototype-mozconfig by /prototype setup (template:
+# prototype/skills/prototype/templates/ in the prototype plugin).
+# The /prototype pipeline passes it on every build:
+#   MOZCONFIG=$HOME/.firefox-prototype-mozconfig ./mach build
+# For manual builds, also export it in ~/.zshrc or equivalent.
+
+# Artifact builds: download pre-compiled C++/Rust components from CI.
+# Drops obj dir from ~30 GB to ~1.5 GB; suitable for front-end-only prototype work.
+ac_add_options --enable-artifact-builds
+
+# Auto-clobber when source-tree changes invalidate the build.
+# Without this, mach refuses to build until you manually run `./mach clobber`.
+mk_add_options AUTOCLOBBER=1
+
+# Per-worktree obj dirs. Without this, mach can pick up an inherited
+# symlinked obj dir from a sibling worktree, breaking parallel-build/
+# parallel-test isolation.
+# @TOPSRCDIR@ is the active worktree's source root; @CONFIG_GUESS@ is the
+# platform string (e.g., aarch64-apple-darwin25.3.0).
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-@CONFIG_GUESS@

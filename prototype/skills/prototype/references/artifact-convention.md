@@ -9,7 +9,7 @@ This makes the pipeline **resumable** (a stalled prototype 3 days later picks up
 ## 1. Directory layout
 
 ```
-~/FirefoxPrototype/_prototype/<YYYY-MM-DD>-<feature-slug>/
+<project_root>/_prototype/<YYYY-MM-DD>-<feature-slug>/     # project_root defaults to ~/FirefoxPrototype
 ├── status.yaml                  # phase, scope, cycle counts, blockers
 ├── idea.md                      # raw user idea (verbatim; scoping notes appended for new-feature)
 ├── demo.md                      # the 2-3 demo prompts from intake — QA's bar
@@ -52,7 +52,7 @@ For multi-cycle artifacts (build reports, QA reports), each cycle is written as 
 The `N` in `build-cycle-N.md` and `qa-cycle-N.md` is derived from `status.yaml` counters, not by globbing the directory:
 
 ```bash
-PS=/Users/joliehuang/FirefoxPrototype/bin/proto-status.sh
+PS=<project_root>/bin/proto-status.sh
 # Build cycle number for a fresh build
 N=$(($($PS get "$DIR" cycles.build) + 1))
 # QA cycle number
@@ -108,10 +108,10 @@ caps:
   demo_fix_rounds: 2  # live-fix rounds QA may spend on a failing demo prompt
 
 # set at init by the coordinator (worktree is created before spec so its build overlaps planning)
-project_root: /Users/.../FirefoxPrototype
+project_root: /Users/<you>/FirefoxPrototype
 time_budget_min: 90
 worktree:
-  path: /Users/.../FirefoxPrototype/worktrees/feature-xyz
+  path: /Users/<you>/FirefoxPrototype/worktrees/feature-xyz
   branch: feature-xyz
   base: ai/main
 
@@ -129,7 +129,7 @@ last_actor: prototype-build
 - **`completed.qa: true`** is exclusively the coordinator's flag — set only after triaging the latest QA report shows all PASS.
 - **`updated`** is auto-stamped by `proto-status.sh set` (don't pass it explicitly unless overriding).
 
-Use `proto-status.sh` (`<project_root>/bin/proto-status.sh`; a copy ships in the coordinator's `scripts/`). Commands: `init`, `set`, `get`, `check-cap <layer>`, `note "<text>"`. Sub-skills should not parse or write YAML by hand.
+Use `proto-status.sh` (`<project_root>/bin/proto-status.sh`, installed from the coordinator's `scripts/` by `/prototype setup` and refreshed by each run's preflight). Commands: `init`, `set`, `get`, `check-cap <layer>`, `note "<text>"`. Sub-skills should not parse or write YAML by hand.
 
 ---
 

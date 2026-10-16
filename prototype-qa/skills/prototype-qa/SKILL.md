@@ -1,7 +1,7 @@
 ---
 name: prototype-qa
 description: QA agent that validates Firefox Smart Window prototypes end-to-end via Marionette. Use when the user says "qa the prototype", "test the prototype", "validate the build", or when invoked by the /prototype coordinator. Can also be used standalone.
-version: 3.1.0
+version: 3.2.0
 ---
 
 # Prototype QA

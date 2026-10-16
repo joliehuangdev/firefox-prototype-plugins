@@ -2,6 +2,10 @@
 
 Coordinator for the Firefox Smart Window prototype pipeline.
 
+## Setup
+
+`/prototype setup` once per machine: creates the project folders under `~/FirefoxPrototype` (or a folder you name), installs the helper scripts into its `bin/`, writes the artifact-build mozconfig, and lists what needs you (clone, bootstrap, first build, golden profile). The scripts live in `skills/prototype/scripts/`; `bin/` gets copies, refreshed at the start of every run.
+
 ## Flow
 
 1. **Intake**, one question at a time: scope (tweak / new widget / new feature), the 2–3 demo prompts, existing inputs (brief, Figma, branch), setup needs (where keys live), time budget.

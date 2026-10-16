@@ -12,16 +12,16 @@ Always launch via the worktree's `run.command`, which is a thin wrapper around t
 
 ```bash
 #!/bin/bash
-exec /Users/joliehuang/FirefoxPrototype/bin/launch-prototype.sh "$(dirname "$0")"
+exec <project_root>/bin/launch-prototype.sh "$(dirname "$0")"
 ```
 
-`bin/launch-prototype.sh` handles: golden-profile clone, free Marionette port assignment, integrity check, pre-launch hook.
+`<project_root>/bin/launch-prototype.sh` handles: golden-profile clone, free Marionette port assignment, integrity check, pre-launch hook. `new-prototype.sh` writes `run.command` with that absolute path. The helpers in `bin/` are installed from the prototype plugin by `/prototype setup` (and refreshed by every `/prototype` run); edit the plugin copy, not `bin/`.
 
 **`./mach run` is forbidden.** It creates a fresh temp profile every launch — losing prefs, FxA auth, and the MLPA model cache.
 
 ## Golden profile
 
-Lives at `~/.firefox-prototype-golden/`, seeded once via `seed-golden.sh`. The launcher clones it (APFS COW when same volume) into `<worktree>/profile-default/` on first run, so each prototype starts pre-authed and pre-warmed.
+Lives at `~/.firefox-prototype-golden/`, seeded once via `<project_root>/bin/seed-golden.sh` on a new, empty profile that the user signs in to with their own Firefox Account. Never copy an existing profile (anyone's) into it. The launcher clones it (APFS COW when same volume) into `<worktree>/profile-default/` on first run, so each prototype starts pre-authed and pre-warmed.
 
 ### Required prefs in golden's `user.js`
 
