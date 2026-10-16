@@ -1,5 +1,7 @@
 # prototype-build
 
+Part of the `/prototype` family. Install all seven plugins with the two commands in the [main README](../README.md#installation), then run `/prototype setup`.
+
 Engineer agent. Works in the worktree the coordinator created (first command: `git branch --show-current`).
 
 1. Ten-line plan from spec, design, distillate and demo prompts.

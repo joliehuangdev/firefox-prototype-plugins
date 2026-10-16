@@ -1,4 +1,7 @@
 {
   "name": "qa-extension",
-  "description": "Automates loading, testing, debugging, and fixing a Firefox browser extension in a loop until all tests pass."
+  "description": "Automates loading, testing, debugging, and fixing a Firefox browser extension in a loop until all tests pass.",
+  "version": "1.0.0",
+  "author": {"name": "joliehuangdev"},
+  "license": "MIT"
 }

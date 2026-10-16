@@ -1,5 +1,7 @@
 # prototype-review
 
+Part of the `/prototype` family. Install all seven plugins with the two commands in the [main README](../README.md#installation), then run `/prototype setup`.
+
 Adversarial reviewer for `spec.md` and `design.md`. Reads only the artifact files, never the conversation.
 
 - Spec review: testability, tool completeness, artifact/tool alignment, scope leaks, integration realism, hidden assumptions.

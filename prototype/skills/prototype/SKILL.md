@@ -1,7 +1,7 @@
 ---
 name: prototype
 description: Coordinator skill that orchestrates the full prototype pipeline for Firefox Smart Window. Use when the user says "prototype", "build a prototype", "let's prototype", or provides a product idea they want turned into a working Smart Window prototype end-to-end. Also use with "resume prototype" to continue a stalled run, and with "prototype setup" to set up a new machine.
-version: 3.2.0
+version: 3.2.1
 ---
 
 # Prototype Pipeline Coordinator
@@ -229,7 +229,7 @@ Read `reports/qa-latest.md`.
 - Otherwise group failures by class and route, highest layer first: `spec` → spec agent, `design` → designer, `build` → engineer (all via `SendMessage` to the existing agent; respawn only if it is gone). `$PS check-cap` before each. Then re-run QA (`SendMessage` the QA agent: "re-test only the failed cases").
 - A cap reached with the **demo** still failing → `phase=blocked`, tell the user exactly which demo prompt fails and why, and offer: raise the cap, change the demo prompt, or accept as partial (`completed.demo=false`, `phase=done`). Never mark the demo passing because offline tests pass.
 
-**Handover.** Copy `<WT>/README.md` to `<DIR>/README.md`. Report in this order: the demo prompts and whether each passed; how to run (`<WT>/run.command`); artifact dir and branch; cycles by layer; anything deferred. Then offer, as separate questions: push the branch to `ai` (`git -C <WT> push ai <branch>`), and `/push-to-demo`.
+**Handover.** Copy `<WT>/README.md` to `<DIR>/README.md`. Report in this order: the demo prompts and whether each passed; how to run (`<WT>/run.command`); artifact dir and branch; cycles by layer; anything deferred. Then offer, as separate questions: push the branch to `ai` (`git -C <WT> push ai <branch>`; needs write access to Firefox-AI/firefox-prototypes), and `/push-to-demo` only if that skill is installed (it is not part of these plugins).
 
 ---
 

@@ -1,5 +1,7 @@
 # prototype-qa
 
+Part of the `/prototype` family. Install all seven plugins with the two commands in the [main README](../README.md#installation), then run `/prototype setup`.
+
 QA agent, Marionette-driven.
 
 Order, hard-capped at 8 cases: smoke → **every demo prompt, live, verbatim** (flaky sites: 3 runs, report n/3) → ≤5 more spec criteria by risk. Every failure classified `spec | design | build | infra`. `infra` is self-fixed; `build` may go through the live fix loop (capped per demo prompt); anything else is reported for the coordinator to route.

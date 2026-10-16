@@ -107,4 +107,4 @@ Only kill via:
 
 ## Demo apps (frozen)
 
-Pre-compiled `Nightly.app` in `demos/<name>/`. Cannot be patched in place. If a fix is needed, switch to source mode (worktree) or rebuild the demo via `push-to-demo` after fixing in source.
+Pre-compiled `Nightly.app` in `demos/<name>/`. Cannot be patched in place. If a fix is needed, switch to source mode (worktree) or rebuild the demo via the separate `push-to-demo` skill (not part of these plugins) after fixing in source.

@@ -1,5 +1,7 @@
 # prototype-spec
 
+Part of the `/prototype` family. Install all seven plugins with the two commands in the [main README](../README.md#installation), then run `/prototype setup`.
+
 PM agent. Writes `spec.md` from `idea.md`, `demo.md` and an optional brief.
 
 - Opens with the **demo script** (the intake prompts, verbatim) and tags the criteria they exercise `[demo]`.

@@ -6,7 +6,7 @@
 #
 # Usage: new-prototype.sh <prototype-name> [base-ref]
 # Example: new-prototype.sh assistant-tab-grouper            # branches from ai/main
-#          new-prototype.sh jev-v2 jev-browser-agent        # branches from an existing branch
+#          new-prototype.sh my-feature-v2 my-feature        # branches from an existing branch
 #
 # What this does:
 #   1. Creates a new branch from <base-ref> (default ai/main)

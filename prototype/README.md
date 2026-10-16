@@ -1,5 +1,7 @@
 # prototype
 
+Part of the `/prototype` family. Install all seven plugins with the two commands in the [main README](../README.md#installation), then run `/prototype setup`.
+
 Coordinator for the Firefox Smart Window prototype pipeline.
 
 ## Setup
@@ -15,7 +17,7 @@ Coordinator for the Firefox Smart Window prototype pipeline.
 5. **Spec** → **spec review ‖ design ‖ distill** → **design review**, each with a size limit; one trim request max.
 6. **Build**: one engineer in the worktree; kept alive and messaged for fixes.
 7. **QA**: smoke, then every demo prompt live, then ≤5 more. Live fix loop for `build` failures, capped per demo prompt.
-8. **Triage** by class with caps, re-test only failures, then **handover**: README in the worktree, run command, offer to push the branch and `/push-to-demo`.
+8. **Triage** by class with caps, re-test only failures, then **handover**: README in the worktree, run command, offer to push the branch (and `/push-to-demo`, if you have that separate skill).
 
 After every phase: `[phase] 9 min · 147k tokens · total 23/90 min`. At the budget, it stops and asks.
 

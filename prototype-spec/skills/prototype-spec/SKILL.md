@@ -1,7 +1,7 @@
 ---
 name: prototype-spec
 description: PM agent that generates a structured prototype spec for Firefox Smart Window features. Use when the user says "write a spec", "prototype spec", or when invoked by the /prototype coordinator. Can also be used standalone for spec drafting.
-version: 3.2.0
+version: 3.2.1
 ---
 
 # Prototype Spec — PM Agent
