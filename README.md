@@ -16,7 +16,7 @@ Claude Code plugins that take a Firefox Smart Window idea to a demoable, QA'd bu
 | `brainstorm` | `/brainstorm` | Standalone ideation (the coordinator scopes inline) |
 | `qa-extension` | `/qa-extension` | Standalone Firefox extension QA |
 
-## Pipeline (v3.1)
+## Pipeline
 
 ```text
 Intake (scope, demo prompts, inputs, keys, budget)
@@ -30,17 +30,19 @@ Intake (scope, demo prompts, inputs, keys, budget)
 
 Tweaks skip all agents: the coordinator edits, builds and smokes in the worktree itself.
 
-What changed from v3.0, and why (measured on two Oct 2026 runs: 25 agents, ~7.5 h, 127M context tokens, demo still failing):
+What changed in v3.1, and why (two v3.0 runs in Oct 2026 took 2 to 3 hours each and used 25 agents and 127M context tokens between them; the second was stopped for cost before its demo passed):
 
 - **Demo prompts are collected at intake and are the bar.** QA runs them first, live; `completed.demo` is set only when they pass. Offline criteria passing no longer counts as done.
 - **Everything you'd otherwise be asked mid-run is asked up front**: keys, prompts, existing brief/Figma/branch, time budget.
-- **Worktree and first build start at intake**, overlapping the ~10 min artifact build with planning.
+- **Worktree and first build start at intake**, overlapping the ~12 min artifact build with planning.
 - **Hard size limits**: spec ≤120/200 lines with ≤8/12 criteria, design ≤120, distillate ≤300, reviews ≤80, QA ≤8 cases. Agents re-read these on every turn, so length is cost.
 - **Agents are reused** via `SendMessage` for fixes instead of respawned.
 - **Progress line after every phase** (minutes, tokens, budget) and a hard stop at the budget.
 - **Provided Figma is transcribed, not redesigned**; Figma generation is opt-in.
 - **Distill and build read the worktree**, not the main checkout (branch bases differ).
 - **Handover README** in the worktree: what it does, prompts to try, setup, limits.
+
+v3.2 makes the plugins run on any machine: no hardcoded paths, the helper scripts ship inside the `prototype` plugin, and `/prototype setup` prepares a new machine.
 
 ## Installation
 
@@ -83,7 +85,13 @@ Standalone: `/prototype-spec`, `/prototype-review`, `/prototype-design`, `/proto
 
 ## Cost
 
-A new-feature run is expensive. Baseline from two real new-feature runs (Oct 2026, v3.0): about 127M context tokens and about 7.5 hours of agent time, mostly cache reads. Build and QA were about two thirds of it. A tweak skips the agents and costs far less; a new widget falls in between. You set a time budget at intake, and the coordinator stops there and asks before spending more.
+A new-feature run is expensive. Measured on two real new-feature runs (Oct 2026, v3.0, before the v3.1 cuts), each run:
+
+- took 2 to 3 hours from intake to the last QA fix,
+- used about 60 to 65M context tokens across its agents, plus 6 to 13M for the coordinator; over 90% of that is cache reads,
+- spent about two thirds of its tokens in build and QA.
+
+The first run ended with a working demo (about 2 hours); the second was stopped for cost at about 3 hours, before its live demo passed. A tweak skips the agents and costs far less; a new widget falls in between. You set a time budget at intake, and the coordinator stops there and asks before spending more.
 
 ## What it needs
 
